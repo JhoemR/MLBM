@@ -116,14 +116,14 @@ F.hireCoach = (st, tid, cid) => {
   if (pay > t.bud) return `Hiring him would put you over budget ($${t.bud}M).`;
   if (cur) { cur.tid = -1; cur.ask = coachAsk(cur); }
   c.tid = tid; c.sal = ask.sal; c.y = ask.y; delete c.ask; t.staff[c.role] = c.id;
-  txnAdd(st, `${t.ab} hired ${c.f} ${c.l} as ${ROLES.find(r => r[0] === c.role)[1]}`);
+  txnAdd(st, `${t.ab} hired ${c.f} ${c.l} as ${ROLES.find(r => r[0] === c.role)[1]}`, 'staff', tid);
   newsAdd(st, `The ${t.name} hired ${c.f} ${c.l} as their new ${ROLES.find(r => r[0] === c.role)[1].toLowerCase()}.`, tid);
   return null;
 };
 F.fireCoach = (st, tid, cid) => {
   const t = st.teams[tid]; const c = st.coaches[cid]; if (!c || c.tid !== tid) return 'Not on your staff.';
   c.tid = -1; c.ask = coachAsk(c); delete t.staff[c.role];
-  txnAdd(st, `${t.ab} parted ways with ${c.f} ${c.l} (${ROLES.find(r => r[0] === c.role)[1]})`);
+  txnAdd(st, `${t.ab} parted ways with ${c.f} ${c.l} (${ROLES.find(r => r[0] === c.role)[1]})`, 'staff', tid);
   return null;
 };
 F.extendCoach = (st, tid, cid) => {
@@ -654,7 +654,7 @@ F.fdPick = (st, tid, pid) => {
   if (d.picks[d.i] !== tid) return 'Not your pick.';
   const p = st.players[pid]; if (!p || p.tid !== -3) return 'That player is already taken.';
   p.tid = tid; p.lv = 0; d.made.push([tid, pid]); d.i++;
-  if (d.i <= 30 || st.teams[tid].user != null) txnAdd(st, `Fantasy draft R${Math.floor((d.i - 1) / 30) + 1} #${d.i}: ${st.teams[tid].ab} take ${p.p} ${pname(p)}`);
+  if (d.i <= 30 || st.teams[tid].user != null) txnAdd(st, `Fantasy draft R${Math.floor((d.i - 1) / 30) + 1} #${d.i}: ${st.teams[tid].ab} take ${p.p} ${pname(p)}`, 'draft', tid);
   if (d.i === 1) newsAdd(st, `The ${st.teams[tid].name} make ${pname(p)} the first overall pick of the fantasy draft.`, tid);
   return null;
 };
@@ -689,6 +689,156 @@ function fdFinish(st) {
   newsAdd(st, 'The fantasy draft is complete! Organizations are set — Opening Day awaits.');
 }
 
+
+/* ---------------- position familiarity ---------------- */
+F.POS_ALL = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF'];
+function learn(st, p, pos, amt) {
+  if (!pos || pos === p.p || pos === 'DH') return;
+  const cur = F.famAt(p, pos); if (cur >= 100) return;
+  const ageF = p.a <= 24 ? 1.3 : p.a <= 29 ? 1 : 0.7;
+  const coach = p.tid >= 0 ? F.coachOf(st, p.tid, isP(p) ? 'pit' : 'bench') : null; const cf = coach ? 0.8 + coach.r.dev / 250 : 1;
+  const nv = Math.min(100, cur + amt * ageF * cf * (cur < 50 ? 1.2 : 1));
+  (p.fam || (p.fam = {}))[pos] = Math.round(nv * 10) / 10;
+  if (cur < 90 && nv >= 90 && p.tid >= 0 && st.teams[p.tid].user != null) newsAdd(st, `${pname(p)} is now fully comfortable ${pos === 'SP' ? 'as a starter' : pos === 'RP' ? 'in relief' : 'at ' + pos}.`, p.tid);
+}
+F.learnPos = learn;
+H.box = (st, sd, box) => {
+  if (box.asg) return;
+  for (const [id, pos] of sd.order) { const p = st.players[id]; if (p) learn(st, p, pos, 0.55); }
+  for (const [id] of sd.pit) { const p = st.players[id]; if (!p) continue; if (p.p === 'SP' && id !== sd.sp) learn(st, p, 'RP', 0.8); else if (p.p === 'RP' && id === sd.sp) learn(st, p, 'SP', 1.5); }
+};
+F.setTrain = (st, pid, pos) => { const p = st.players[pid]; if (!p) return 'Player not found.'; if (pos && pos === p.p) pos = ''; p.learn = pos || null; return null; };
+F.setPrimary = (st, pid, pos) => {
+  const p = st.players[pid]; if (!p) return 'Player not found.';
+  if (F.famAt(p, pos) < 85) return 'He needs at least 85 familiarity there first.';
+  const old = p.p; (p.fam || (p.fam = {}))[old] = 100; p.p = pos; delete p.fam[pos];
+  p.o = F.calcOvr(p); if (p.pt < p.o) p.pt = p.o; p.learn = null;
+  txnAdd(st, `${p.tid >= 0 ? st.teams[p.tid].ab : ''} moved ${pname(p)} from ${old} to ${pos}`, 'position', p.tid);
+  return null;
+};
+
+/* ---------------- minor league games ---------------- */
+function lvlAvg(st, L) {
+  const h = { con: 0, pow: 0, eye: 0, spd: 0, fld: 0, n: 0 }, q = { S: 0, ctl: 0, n: 0 };
+  for (const p of Object.values(st.players)) {
+    if (p.tid < 0 || p.lv !== L) continue;
+    if (isP(p)) { q.S += p.r.vel * .45 + p.r.brk * .55; q.ctl += p.r.ctl; q.n++; }
+    else { h.con += p.r.con; h.pow += p.r.pow; h.eye += p.r.eye; h.spd += p.r.spd; h.fld += p.r.fld; h.n++; }
+  }
+  const d = x => x.n || 1;
+  return { con: h.con / d(h), pow: h.pow / d(h), eye: h.eye / d(h), spd: h.spd / d(h), fld: h.fld / d(h), S: q.S / d(q), ctl: q.ctl / d(q) };
+}
+function simPA(con, pow, eye, spd, S, C, cn) {
+  const Z = 0.8, zz = (v, c) => c + (v - c) * Z;
+  S = zz(S, cn.S); C = zz(C, cn.ctl); con = zz(con, cn.con); pow = zz(pow, cn.pow); eye = zz(eye, cn.eye);
+  const k = clamp(0.222 + (S - cn.S) * 0.0036 - (con - cn.con) * 0.0030 - (eye - cn.eye) * 0.0008, 0.06, 0.45);
+  const bb = clamp(0.082 + (eye - cn.eye) * 0.0016 - (C - cn.ctl) * 0.0019, 0.02, 0.2);
+  const hr = clamp(0.032 + (pow - cn.pow) * 0.0011 - (S - cn.S) * 0.0004 - (C - cn.ctl) * 0.0002, 0.003, 0.095);
+  const babip = clamp(0.300 + (con - cn.con) * 0.0016 - (S - cn.S) * 0.0007 + (spd - cn.spd) * 0.0005, 0.2, 0.4);
+  const x = rnd();
+  if (x < k) return 'K'; if (x < k + bb) return 'BB'; if (x < k + bb + 0.01) return 'HBP'; if (x < k + bb + 0.01 + hr) return 'HR';
+  if (rnd() < babip) { const y = rnd(), tr = clamp(0.022 + (spd - 62) * 0.001, .004, .06), db = clamp(0.2 + (pow - 62) * 0.0016, .1, .33); return y < tr ? '3B' : y < tr + db ? '2B' : '1B'; }
+  return 'OUT';
+}
+function tally(arr, ev, isBat) {
+  if (isBat) {
+    arr[B.pa]++;
+    if (ev === 'BB') arr[B.bb]++; else if (ev === 'HBP') arr[B.hbp]++;
+    else { arr[B.ab]++; if (ev === 'K') arr[B.k]++; if (['1B', '2B', '3B', 'HR'].includes(ev)) { arr[B.h]++; if (ev === '2B') arr[B.d]++; if (ev === '3B') arr[B.t]++; if (ev === 'HR') arr[B.hr]++; } }
+  } else {
+    arr[P.bf]++;
+    if (ev === 'BB' || ev === 'HBP') arr[P.bb] += ev === 'BB' ? 1 : 0;
+    else if (ev === 'K') { arr[P.k]++; arr[P.o]++; } else if (ev === 'OUT') arr[P.o]++;
+    else { arr[P.h]++; if (ev === 'HR') arr[P.hr]++; }
+  }
+}
+function rcRuns(c) { const ab = c.ab || 1; return (c.h + c.bb) * c.tb / Math.max(1, ab + c.bb); }
+function minorsDay(st) {
+  const levels = st.settings.aa ? [1, 2] : [1];
+  for (const L of levels) {
+    const cn = lvlAvg(st, L);
+    const res = [];
+    for (const t of st.teams) {
+      const ps = teamPlayers(st, t.id).filter(p => p.lv === L && p.inj === 0);
+      if (ps.length < 12) continue;
+      const hit = ps.filter(p => !isP(p)).sort((a, b) => b.o - a.o), pit = ps.filter(isP);
+      const off = { h: 0, bb: 0, tb: 0, ab: 0 }, def = { h: 0, bb: 0, tb: 0, ab: 0 };
+      hit.forEach((p, i) => {
+        const n = i < 9 ? 4 + (rnd() < 0.25 ? 1 : 0) : (rnd() < 0.2 ? 1 : 0); if (!n) return;
+        const a = p.mb || (p.mb = new Array(F.BL).fill(0)); a[B.g]++;
+        let hRuns = 0;
+        for (let k = 0; k < n; k++) {
+          const ev = simPA(p.r.con, p.r.pow, p.r.eye, p.r.spd, cn.S, cn.ctl, cn); tally(a, ev, true);
+          if (ev === 'BB' || ev === 'HBP') off.bb++; else { off.ab++; if (ev !== 'K' && ev !== 'OUT') { off.h++; off.tb += { '1B': 1, '2B': 2, '3B': 3, HR: 4 }[ev]; } }
+          if (ev === 'HR') { a[B.r]++; a[B.rbi] += 1 + (rnd() < 0.45 ? 1 : 0); }
+          else if (ev !== 'K' && ev !== 'OUT') { if (rnd() < 0.32) a[B.r]++; if (rnd() < 0.25) a[B.rbi]++; }
+          if (ev === '1B' || ev === 'BB') { if (p.r.spd >= 70 && rnd() < (p.r.spd - 65) * 0.012) { if (rnd() < 0.72) a[B.sb]++; else a[B.cs]++; } }
+        }
+        const pos = p.learn || p.p; if (pos !== p.p) learn(st, p, pos, i < 9 ? 0.6 : 0.25);
+      });
+      hit.forEach(p => { if (p.learn) learn(st, p, p.learn, 0.12); });
+      const sps = pit.filter(p => p.p === 'SP' || p.learn === 'SP').sort((a, b) => b.r.sta - a.r.sta).slice(0, 5);
+      const sp = sps.length ? sps[(st.day + t.id) % sps.length] : pit[0];
+      const rel = F.shuffle(pit.filter(p => p !== sp)).slice(0, 3);
+      const outing = (p, bf, gs) => {
+        const a = p.mp || (p.mp = new Array(F.PL).fill(0)); a[P.g]++; if (gs) a[P.gs]++;
+        const S = p.r.vel * .45 + p.r.brk * .55, C = p.r.ctl; const c = { h: 0, bb: 0, tb: 0, ab: 0 };
+        for (let k = 0; k < bf; k++) {
+          const ev = simPA(cn.con, cn.pow, cn.eye, cn.spd, S, C, cn); tally(a, ev, false);
+          if (ev === 'BB' || ev === 'HBP') { c.bb++; def.bb++; } else { c.ab++; def.ab++; if (ev !== 'K' && ev !== 'OUT') { c.h++; def.h++; const tb = { '1B': 1, '2B': 2, '3B': 3, HR: 4 }[ev]; c.tb += tb; def.tb += tb; } }
+        }
+        const r = Math.round(rcRuns(c) * rf(0.68, 1.02)); a[P.r] += r; a[P.er] += Math.round(r * 0.92);
+        if (p.p === 'SP' && !gs) learn(st, p, 'RP', 0.4); if (p.p === 'RP' && gs) learn(st, p, 'SP', 1.2);
+        return a;
+      };
+      const spLine = sp ? outing(sp, clamp(Math.round(17 + (sp.r.sta - 50) * 0.14 + gauss() * 3), 8, 30), true) : null;
+      rel.forEach(p => outing(p, ri(3, 6), false));
+      res.push({ t, rf: rcRuns(off), ra: rcRuns(def), spLine, rel: rel.length ? rel[rel.length - 1] : null });
+    }
+    F.shuffle(res);
+    for (let i = 0; i + 1 < res.length; i += 2) {
+      const A = res[i], Bx = res[i + 1];
+      let sa = Math.round((A.rf + Bx.ra) / 2 * rf(0.75, 1.25)), sb = Math.round((Bx.rf + A.ra) / 2 * rf(0.75, 1.25));
+      if (sa === sb) { if (rnd() < 0.5) sa++; else sb++; }
+      const rec = (o, w) => { o.t.mrec = o.t.mrec || {}; const r = o.t.mrec[L] || (o.t.mrec[L] = [0, 0, 0, 0]); r[w ? 0 : 1]++; r[2] += w ? Math.max(sa, sb) : Math.min(sa, sb); r[3] += w ? Math.min(sa, sb) : Math.max(sa, sb); if (o.spLine) o.spLine[w ? P.w : P.l]++; };
+      rec(A, sa > sb); rec(Bx, sb > sa);
+    }
+  }
+}
+function minorDev(st) {
+  const levels = st.settings.aa ? [1, 2] : [1];
+  for (const L of levels) {
+    const pool = Object.values(st.players).filter(p => p.tid >= 0 && p.lv === L);
+    const hb = new Array(F.BL).fill(0), pb = new Array(F.PL).fill(0); const wins = [];
+    for (const p of pool) {
+      if (!isP(p) && p.mb) { const w0 = p.mws || new Array(F.BL).fill(0); const d = p.mb.map((v, i) => v - (w0[i] || 0)); if (d[B.pa] >= 20) { d.forEach((v, i) => hb[i] += v); wins.push([p, d]); } }
+      if (isP(p) && p.mp) { const w0 = p.mws || new Array(F.PL).fill(0); const d = p.mp.map((v, i) => v - (w0[i] || 0)); if (d[P.bf] >= 25) { d.forEach((v, i) => pb[i] += v); wins.push([p, d]); } }
+    }
+    const lgW = F.batLine(hb).woba || 0.315, lgF = F.pitLine(pb).fip || 4.2;
+    for (const [p, d] of wins) {
+      const old = p.o; let delta;
+      if (!isP(p)) { const l = F.batLine(d); delta = clamp((l.woba - lgW) * 25 * (d[B.pa] / (d[B.pa] + 150)), -0.7, 0.7); for (const k of ['con', 'pow', 'eye']) p.r[k] = clamp(p.r[k] + delta * rf(0.6, 1.4), 15, 99); p.mws = p.mb.slice(); }
+      else { const l = F.pitLine(d); delta = clamp((lgF - l.fip) * 0.6 * (d[P.bf] / (d[P.bf] + 180)), -0.7, 0.7); p.r.brk = clamp(p.r.brk + delta * rf(0.6, 1.4), 15, 99); p.r.ctl = clamp(p.r.ctl + delta * rf(0.6, 1.4), 15, 99); p.r.vel = clamp(p.r.vel + delta * 0.4, 15, 99); p.mws = p.mp.slice(); }
+      // playing-time growth toward potential for young players
+      if (p.a <= 26 && p.pt > p.o) { const g = rf(0.1, 0.5) * Math.min(1, (p.pt - p.o) / 10) * (H.dev ? H.dev(st, p) : 1); const ks = isP(p) ? ['vel', 'ctl', 'brk'] : ['con', 'pow', 'eye', 'spd', 'fld', 'arm']; for (const k of ks) p.r[k] = clamp(p.r[k] + g * rf(0.5, 1.5), 15, 99); }
+      p.o = F.calcOvr(p); if (p.o > p.pt) p.pt = p.o;
+      const ch = p.o - old; p.trend = (p.trend || 0) + ch; p.td = ch;
+      if (st.teams[p.tid].user != null && p.o >= old + 2) newsAdd(st, `Prospect watch: ${pname(p)} (${L === 1 ? 'AAA' : 'AA'}) is developing fast — now ${p.o} OVR.`, p.tid);
+    }
+  }
+}
+function archiveMinors(st) {
+  for (const p of Object.values(st.players)) {
+    if (!p.mb && !p.mp) continue;
+    const t = p.tid >= 0 ? st.teams[p.tid] : null; const L = p.lv >= 1 ? p.lv : 1;
+    const ab = t && t.aff ? (L === 2 && t.aff.aa ? t.aff.aa[1] : t.aff.aaa ? t.aff.aaa[1] : t.ab) : (t ? t.ab : 'FA');
+    p.c.push({ y: st.season, t: `${ab} (${L === 2 ? 'AA' : 'AAA'})`, b: p.mb || null, p: p.mp || null, m: 1 });
+    p.mb = null; p.mp = null; p.mws = null;
+  }
+  for (const t of st.teams) { (t.mhist || (t.mhist = [])).push({ y: st.season, r: t.mrec || {} }); if (t.mhist.length > 10) t.mhist.shift(); t.mrec = {}; }
+}
+F.minorsDay = minorsDay;
+
 /* ---------------- hooks ---------------- */
 H.create = st => {
   st.coaches = {}; st.cNext = 1;
@@ -717,7 +867,8 @@ H.day = st => {
     if (rnd() < (tr.r.rec - 55) * 0.012 + (tr.pref === 'Rapid Rehab' ? 0.1 : 0)) p.inj = Math.max(0, p.inj - 1);
   }
   if (st.phase === 'regular') {
-    if (st.day % 10 === 9) dynamicRatings(st);
+    if (st.day % 10 === 9) { dynamicRatings(st); minorDev(st); }
+    minorsDay(st);
     if (st.asg && st.asg.open && !st.asg.closed) asgDailyVotes(st);
     if (F.tradesOpen(st) && rnd() < 0.4) genRumors(st, ri(1, 2));
   }
@@ -730,7 +881,7 @@ H.after = st => {
   if (a.open && !a.closed && st.day >= F.asgCloseDay(st)) asgSelect(st);
   if (!a.done && st.day >= F.asgDay(st) && st.phase === 'regular') asgPlay(st);
 };
-H.offseason = st => { teamSeasonEnd(st); coachSeasonEnd(st); coachOffseason(st); genRumors(st, 3); };
+H.offseason = st => { archiveMinors(st); teamSeasonEnd(st); coachSeasonEnd(st); coachOffseason(st); genRumors(st, 3); };
 H.newSeason = st => {
   asgInit(st); genDraftClass(st);
   for (const p of Object.values(st.players)) { p.ws = null; p.trend = 0; p.td = 0; }

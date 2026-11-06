@@ -33,16 +33,20 @@ const isP = p => p.p === 'SP' || p.p === 'RP';
 const H = G.FR_HOOKS || (G.FR_HOOKS = {});
 
 /* ---------- ratings ---------- */
+const BASEFAM = { SS: { '2B': 80, '3B': 72, '1B': 55, CF: 30, LF: 35, RF: 35 }, '2B': { SS: 50, '3B': 55, '1B': 60, LF: 35, RF: 30, CF: 25 }, '3B': { '1B': 65, SS: 35, '2B': 45, LF: 35, RF: 40 }, '1B': { LF: 30, RF: 25, '3B': 25 },
+  CF: { LF: 88, RF: 85, '2B': 15 }, SP: { RP: 80 }, RP: { SP: 35 }, LF: { RF: 70, CF: 40, '1B': 45 }, RF: { LF: 75, CF: 45, '1B': 45 }, C: { '1B': 45, '3B': 20 }, DH: { '1B': 45, LF: 30 } };
+function famAt(p, pos) {
+  if (p.p === pos) return 100;
+  const learned = p.fam && p.fam[pos]; const base = (BASEFAM[p.p] && BASEFAM[p.p][pos]) || (pos === 'C' ? 5 : 20);
+  return Math.min(100, Math.max(base, learned || 0));
+}
 function batVal(r) { return r.con * .36 + r.pow * .32 + r.eye * .22 + r.spd * .10; }
 function defAt(p, pos) {
   if (pos === 'DH') return 0;
   const r = p.r; let d = r.fld * .65 + r.arm * .35; const pp = p.p;
   if (pp === pos) return d;
-  if (pos === 'C') return d - 30;
-  if (pos === '1B') return d - (pp === 'C' ? 6 : 3);
-  if ((IF.includes(pp) && IF.includes(pos)) || (OF.includes(pp) && OF.includes(pos))) return d - (pos === 'SS' || pos === 'CF' ? 8 : 5);
-  if (pp === '1B' || pp === 'C') return d - 14;
-  return d - 12;
+  const fam = famAt(p, pos);
+  return d - (100 - fam) * (pos === 'C' ? 0.32 : pos === 'SS' || pos === 'CF' ? 0.16 : 0.13);
 }
 function ovrAt(p, pos) { if (isP(p)) return p.o; const w = DEFW[pos]; return batVal(p.r) * (1 - w) + defAt(p, pos) * w; }
 function calcOvr(p) {
@@ -228,9 +232,9 @@ function balanceMinors(st, t) {
   const ms = teamPlayers(st, t.id);
   const aaa = ms.filter(p => p.lv === 1), aa = ms.filter(p => p.lv === 2);
   const med = aaa.map(p => p.o).sort((a, b) => a - b)[Math.floor(aaa.length / 2)] || 55;
-  aa.filter(p => p.o >= med + 2 && p.a >= 20).forEach(p => { p.lv = 1; });
+  aa.filter(p => p.o >= med + 2 && p.a >= 20).forEach(p => { p.lv = 1; txnAdd(st, `${t.ab} promoted ${p.p} ${pname(p)} to AAA`, 'promote', t.id); });
   const now = teamPlayers(st, t.id).filter(p => p.lv === 1).sort((a, b) => a.o - b.o);
-  while (now.length > 32) { const p = now.shift(); if (p.a <= 25) p.lv = 2; else break; }
+  while (now.length > 32) { const p = now.shift(); if (p.a <= 25) { p.lv = 2; txnAdd(st, `${t.ab} sent ${p.p} ${pname(p)} down to AA`, 'senddown', t.id); } else break; }
 }
 function genRealMinors(st, t, list) {
   const yrs = st.season - 2026;
@@ -322,7 +326,7 @@ function dayLabel(st, d) {
   return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
 function newsAdd(st, text, tid) { st.news.unshift({ s: st.season, d: st.phase === 'regular' ? st.day : null, ph: st.phase, t: text, tid: tid == null ? null : tid }); if (st.news.length > 200) st.news.length = 200; }
-function txnAdd(st, text) { st.txn.unshift({ s: st.season, d: dayLabel(st), t: text }); if (st.txn.length > 300) st.txn.length = 300; }
+function txnAdd(st, text, k, tids) { st.txn.unshift({ s: st.season, d: dayLabel(st), di: st.phase === 'regular' ? st.day : -1, ph: st.phase, t: text, k: k || 'other', tm: tids == null ? [] : [].concat(tids) }); if (st.txn.length > 700) st.txn.length = 700; }
 const draftDay = st => Math.round(st.settings.games * 0.52);
 const deadlineDay = st => Math.round(st.settings.games * 0.66);
 function tradesOpen(st) {
@@ -343,10 +347,10 @@ function autoLineup(st, t) {
     const best = hs.filter(h => !used.has(h.id) && h.p === pos).sort((a, b) => ovrAt(b, pos) - ovrAt(a, pos))[0];
     if (best) { used.add(best.id); lu.push({ id: best.id, pos }); filled.add(pos); }
   }
-  for (const pos of ORDER) { // fill holes with the best fit
+  for (const pos of ORDER) { // fill holes with the best fit (familiarity matters most)
     if (filled.has(pos)) continue;
     let best = null, bv = -1e9;
-    for (const h of hs) { if (used.has(h.id)) continue; const v = ovrAt(h, pos); if (v > bv) { bv = v; best = h; } }
+    for (const h of hs) { if (used.has(h.id)) continue; const v = ovrAt(h, pos) + famAt(h, pos) * (pos === 'C' ? 0.6 : 0.25); if (v > bv) { bv = v; best = h; } }
     if (best) { used.add(best.id); lu.push({ id: best.id, pos }); }
   }
   let dh = null, dv = -1;
@@ -430,12 +434,12 @@ function fixRoster(st, t) {
   const user = t.user != null;
   const callUp = isPit => {
     const c = teamPlayers(st, t.id).filter(p => p.lv >= 1 && p.inj === 0 && isP(p) === isPit).sort((a, b) => a.lv - b.lv || b.o - a.o)[0];
-    if (c) { c.lv = 0; if (user) newsAdd(st, `${pname(c)} was called up to the ${t.name} (auto, roster shortage).`, t.id); return true; }
+    if (c) { const was = c.lv; c.lv = 0; txnAdd(st, `${t.ab} recalled ${c.p} ${pname(c)} from ${was === 1 ? 'AAA' : 'AA'}`, 'recall', t.id); if (user) newsAdd(st, `${pname(c)} was called up to the ${t.name} (auto, roster shortage).`, t.id); return true; }
     const fa = Object.values(st.players).filter(p => p.tid === -1 && isP(p) === isPit).sort((a, b) => a.sal - b.sal || b.o - a.o).slice(0, 15).sort((a, b) => b.o - a.o)[0];
-    if (fa) { signPlayer(st, fa, t.id, MINSAL, 1); fa.lv = 0; txnAdd(st, `${t.ab} signed ${pname(fa)} (emergency depth)`); return true; }
+    if (fa) { signPlayer(st, fa, t.id, MINSAL, 1); fa.lv = 0; txnAdd(st, `${t.ab} signed free agent ${pname(fa)} (emergency depth)`, 'fa', t.id); return true; }
     return false;
   };
-  const demote = list => { const w = list.sort((a, b) => a.o - b.o)[0]; if (w) { w.lv = 1; if (user) newsAdd(st, `${pname(w)} was optioned to AAA (roster over 26).`, t.id); } };
+  const demote = list => { const w = list.sort((a, b) => a.o - b.o)[0]; if (w) { w.lv = 1; txnAdd(st, `${t.ab} optioned ${w.p} ${pname(w)} to AAA`, 'option', t.id); if (user) newsAdd(st, `${pname(w)} was optioned to AAA (roster over 26).`, t.id); } };
   let guard = 0;
   while (guard++ < 40) {
     const act = active(st, t.id);
@@ -452,11 +456,23 @@ function fixRoster(st, t) {
     if (pit.length > 13) { demote(pit); continue; }
     if (hit.length < 13 || hitH.length < 11) { if (callUp(false)) continue; }
     if (pit.length < 13 || pitH.length < 11) { if (callUp(true)) continue; }
+    // positional coverage: make sure someone healthy can really play C, SS and CF
+    let swapped = false;
+    for (const pos of ['C', 'SS', 'CF', '2B', '3B']) {
+      const th = pos === '2B' || pos === '3B' ? 60 : 75;
+      if (hitH.some(h => famAt(h, pos) >= th)) continue;
+      const cand = teamPlayers(st, t.id).filter(p => p.lv >= 1 && p.inj === 0 && !isP(p) && famAt(p, pos) >= th).sort((a, b) => a.lv - b.lv || b.o - a.o)[0];
+      if (!cand) continue;
+      const out = hit.filter(h => !['C', 'SS', 'CF'].some(q => famAt(h, q) >= 75 && hitH.filter(x => famAt(x, q) >= 75).length <= 1)).sort((a, b) => (a.inj > 0 ? -1 : 0) - (b.inj > 0 ? -1 : 0) || a.o - b.o)[0];
+      if (!out) continue;
+      out.lv = 1; cand.lv = 0; txnAdd(st, `${t.ab} recalled ${pos} ${pname(cand)}; optioned ${pname(out)}`, 'recall', t.id); swapped = true; break;
+    }
+    if (swapped) continue;
     // swap a clearly better AAA player in (AI only)
     const best = teamPlayers(st, t.id).filter(p => p.lv === 1 && p.inj === 0).sort((a, b) => b.o - a.o)[0];
     if (best) {
       const same = (isP(best) ? pit : hit).filter(p => p.p === best.p || (isP(best) && p.p === 'RP')).sort((a, b) => a.o - b.o)[0];
-      if (same && best.o >= same.o + 4 && (best.a >= 22)) { best.lv = 0; same.lv = 1; continue; }
+      if (same && best.o >= same.o + 4 && (best.a >= 22)) { best.lv = 0; same.lv = 1; txnAdd(st, `${t.ab} recalled ${best.p} ${pname(best)} from ${best.lv === 0 ? 'AAA' : 'AAA'}; optioned ${pname(same)}`, 'recall', t.id); continue; }
     }
     break;
   }
@@ -707,7 +723,8 @@ class Game {
     const plat = (bat.b === 'S' ? 2 : (bat.b !== pit.t ? 3 : -3)) * (om.plat || 1);
     const fat = this.fatigue(def, def.pit);
     const r = bat.r, q = pit.r;
-    const S0 = q.vel * .45 + q.brk * .55 - fat + (dm.stuff || 0), C0 = q.ctl - fat * .7 + (dm.ctl || 0);
+    const rolePen = (100 - famAt(pit, def.pit === def.sp ? 'SP' : 'RP')) * 0.05;
+    const S0 = q.vel * .45 + q.brk * .55 - fat - rolePen + (dm.stuff || 0), C0 = q.ctl - fat * .7 - rolePen * 0.6 + (dm.ctl || 0);
     const con0 = r.con + plat + (om.con || 0), pow0 = r.pow + plat * .7 + (om.pow || 0), eye0 = r.eye + (om.eye || 0);
     const dfld0 = def.order.reduce((s, x) => s + (x.pos === 'DH' ? 0 : defAt(this.P(x.id), x.pos)), 0) / 8 + (dm.dfld || 0);
     const cn = this.st.cen || { con: 68, pow: 68, eye: 68, spd: 68, fld: 68, ctl: 68, S: 68 };
@@ -865,6 +882,7 @@ function applyBox(st, box, ctx) {
       for (const [id, line] of sd.pit) { const p = pls[id]; if (!p) continue; const a = p.sp || (p.sp = new Array(PL).fill(0)); a[P.g]++; for (let k = 1; k < PL; k++) a[k] += line[k]; }
     }
     for (const [id, , pc] of sd.pit) { const p = pls[id]; if (p) p.e = Math.max(0, p.e - pc * (id === sd.sp ? 1.0 : 1.6) - 6); }
+    if (H.box) H.box(st, sd, box);
     // rotation advance
     const ri_ = (t.rot || []).indexOf(sd.sp); if (ri_ >= 0) t.rotI = (ri_ + 1) % Math.max(1, t.rot.length);
   });
@@ -975,7 +993,7 @@ function executeTrade(st, tr, quiet) {
   tr.get.forEach(id => { st.players[id].tid = tr.from; });
   const n = ids => ids.map(id => pname(st.players[id])).join(', ') || 'nothing';
   const msg = `TRADE: ${A.ab} send ${n(tr.give)} to ${Bt.ab} for ${n(tr.get)}.`;
-  txnAdd(st, msg); if (!quiet || A.user != null || Bt.user != null) newsAdd(st, msg, tr.from);
+  txnAdd(st, msg, 'trade', [tr.from, tr.to]); if (!quiet || A.user != null || Bt.user != null) newsAdd(st, msg, tr.from);
   [A, Bt].forEach(t => {
     if (t.user != null && !t.auto) { t.rot = (t.rot || []).filter(id => st.players[id].tid === t.id); }
     fixRoster(st, t);
@@ -1030,7 +1048,7 @@ function draftPick(st, tid, pid) {
   const rd = Math.floor(d.i / 30) + 1, no = d.i + 1;
   p.tid = tid; p.lv = st.settings.aa ? 2 : 1; p.sal = 0.5; p.y = 6; p.dr = `${st.season} R${rd} #${no}`; delete p.est; delete p.nz;
   d.made.push([tid, pid]); d.i++;
-  if (st.teams[tid].user != null || rd === 1) txnAdd(st, `Draft R${rd} #${no}: ${st.teams[tid].ab} select ${p.p} ${pname(p)} (age ${p.a})`);
+  txnAdd(st, `Draft R${rd} #${no}: ${st.teams[tid].ab} select ${p.p} ${pname(p)} (age ${p.a})`, 'draft', tid);
   if (rd === 1 && no === 1) newsAdd(st, `${st.teams[tid].name} take ${pname(p)} with the first overall pick.`);
   return null;
 }
@@ -1240,7 +1258,7 @@ function finishResign(st) {
     let keep;
     if (t.user != null) keep = !!dec[id] && a.will;
     else keep = a.will && (a.minor ? p.pt >= 55 && p.a <= 26 : (pval(Object.assign({}, p, { sal: a.sal, y: a.y })) > 6 && payroll(st, t.id) + a.sal - p.sal <= t.bud) ) && rnd() < 0.8;
-    if (keep) { p.sal = a.sal; p.y = a.y; if (t.user != null) txnAdd(st, `${t.ab} re-signed ${pname(p)}: ${a.y} yr / $${a.sal}M`); }
+    if (keep) { p.sal = a.sal; p.y = a.y; txnAdd(st, `${t.ab} re-signed ${pname(p)}: ${a.y} yr / $${a.sal}M`, 'resign', t.id); }
     else { const was = t.ab; p.tid = -1; p.lv = 0; p.ask = askFor(p); if (p.o >= 72) newsAdd(st, `${pname(p)} (${was}) hits free agency.`); }
   }
   st.resign = null;
@@ -1269,7 +1287,7 @@ function faOffer(st, tid, pid, sal, y) {
   if (st.phase !== 'fa') { // instant signing during season / preseason
     if (sal < p.ask.sal * 0.98 || y < 1) return `${pname(p)} wants at least $${p.ask.sal}M.`;
     signPlayer(st, p, tid, sal, y);
-    txnAdd(st, `${t.ab} signed FA ${pname(p)}: ${y} yr / $${sal}M`); newsAdd(st, `${t.name} sign ${pname(p)} (${y} yr / $${sal}M).`, tid);
+    txnAdd(st, `${t.ab} signed free agent ${pname(p)}: ${y} yr / $${sal}M`, 'fa', tid); newsAdd(st, `${t.name} sign ${pname(p)} (${y} yr / $${sal}M).`, tid);
     fixRoster(st, t);
     return null;
   }
@@ -1309,7 +1327,7 @@ function faDay(st) {
     if ((sc >= thresh && rnd() < 0.45 + fa.day * 0.1) || (last && sc >= 0.8)) {
       const t = st.teams[best.tid];
       signPlayer(st, p, best.tid, best.sal, best.y);
-      txnAdd(st, `${t.ab} signed FA ${pname(p)}: ${best.y} yr / $${best.sal}M`);
+      txnAdd(st, `${t.ab} signed free agent ${pname(p)}: ${best.y} yr / $${best.sal}M`, 'fa', t.id);
       if (p.o >= 70 || t.user != null) newsAdd(st, `${pname(p)} signs with the ${t.name}: ${best.y} years, $${best.sal}M per year.`, t.id);
       offs.filter(o => o.user && o.tid !== best.tid).forEach(o => newsAdd(st, `${pname(p)} turned down the ${st.teams[o.tid].name}'s offer.`, o.tid));
       delete fa.offers[pid];
@@ -1338,7 +1356,7 @@ function newSeason(st) {
     const all = teamPlayers(st, t.id); const limit = st.settings.aa ? 110 : 44;
     if (all.length > limit) {
       const cut = all.filter(p => p.lv >= 1).sort((a, b) => pval(a) - pval(b)).slice(0, all.length - limit);
-      cut.forEach(p => { p.tid = -1; p.lv = 0; p.ask = askFor(p); txnAdd(st, `${t.ab} released ${pname(p)}`); });
+      cut.forEach(p => { p.tid = -1; p.lv = 0; p.ask = askFor(p); txnAdd(st, `${t.ab} waived ${pname(p)} to clear organization space`, 'waive', t.id); });
       if (t.user != null && cut.length) newsAdd(st, `${t.name}: released ${cut.length} minor leaguer(s) to meet the ${limit}-player organization limit: ${cut.map(pname).join(', ')}.`, t.id);
     }
     fixRoster(st, t);
@@ -1361,7 +1379,7 @@ function advancePhase(st) {
 function releasePlayer(st, pid) {
   const p = st.players[pid]; if (!p || p.tid < 0) return 'Invalid player.';
   const t = st.teams[p.tid];
-  txnAdd(st, `${t.ab} released ${pname(p)}`);
+  txnAdd(st, `${t.ab} released ${pname(p)}`, 'release', t.id);
   p.tid = -1; p.lv = 0; p.ask = askFor(p); p.ask.sal = r1(Math.max(MINSAL, p.ask.sal * 0.8));
   // dead money: remaining salary stays this season (simplified: 50% of 1 yr)
   t.dead = r1((t.dead || 0) + p.sal * 0.5);
@@ -1371,7 +1389,7 @@ function releasePlayer(st, pid) {
 G.FR = {
   rnd: () => rnd(), setRng: f => { rnd = f; }, ri, rf, pick, clamp, r1, gauss, shuffle, FN, LN, POSADJ, newPlayer, genProspect, bump, computeCen, injDays, H, DEFW,
   LEAGUES, LG, DIVS, TEAMS, HPOS, LPOS, B, BL, P, PL, MINSAL, RN,
-  isP, batVal, defAt, editPlayer, fitOvr, ovrAt, calcOvr, setOvr, marketSal, pval, askFor,
+  isP, batVal, defAt, famAt, BASEFAM, editPlayer, fitOvr, ovrAt, calcOvr, setOvr, marketSal, pval, askFor,
   createLeague, genSchedule, teamPlayers, mlb, active, onIL, payroll, pname, sname, tname, dayLabel, newsAdd, txnAdd,
   draftDay, deadlineDay, tradesOpen, userTeams, isUserTeam,
   autoLineup, orderLineup, bestPositions, autoDepth, validLineup, repairLineup, fixRoster, fixRotation, signPlayer,

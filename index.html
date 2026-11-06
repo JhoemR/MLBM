@@ -249,6 +249,12 @@ a.pl{transition:color .12s}
 .gm em{font-style:normal;font-family:'Barlow Condensed';font-weight:800;font-size:18px;min-width:30px;text-align:right}
 .tier{font-size:11px;font-weight:700;padding:1px 6px;border-radius:5px;background:#2b3a48;white-space:nowrap}.tier.t5{background:#3d3218;color:var(--acc2)}.tier.t4{background:#3a2a14;color:#ffb86b}.tier.t3{background:#173a2a;color:#9ff0c7}.tier.t2{background:#1d3557;color:#bcd6ff}
 .awi{font-size:12px;white-space:nowrap}
+/* transactions + familiarity */
+.txchips .chip{font-family:Barlow,sans-serif;font-weight:600;font-size:12px}.txchips .chip.on{background:var(--c);color:#0d141b}
+.txtag{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:5px;background:color-mix(in srgb,var(--c) 22%,#0f1a23);color:var(--c);border:1px solid color-mix(in srgb,var(--c) 45%,transparent);white-space:nowrap}
+.fams{display:grid;grid-template-columns:1fr;gap:4px}.fam{display:grid;grid-template-columns:34px 1fr 54px 30px auto;gap:8px;align-items:center;font-size:13px}
+.fam i{height:7px;background:#0f1a23;border-radius:5px;overflow:hidden;display:block}.fam i em{display:block;height:100%;background:linear-gradient(90deg,#5aa9e6,#4cc38a)}
+.fam.pri b{color:var(--acc2)}.fam.pri i em{background:var(--acc)}.fam.tr{background:#1d2a36;border-radius:6px}.fam .fbtns{display:flex;gap:3px}
 /* invite */
 .invite{margin-top:12px;padding:10px 12px;border:1px dashed #6b5428;border-radius:10px;background:#1f1a12}.invite .row{margin:6px 0}.invite input{flex:1;min-width:220px;font-size:12px}
 /* inbox */

@@ -382,7 +382,7 @@ function V_roster() {
   return `<div class="pagehead"><h2>${tb(tid, true)} ${esc(F.tname(t))} Roster</h2>${teamSelect(tid)}</div>
   <div class="kpis small"><div><small>Active</small><b class="${act.length > 26 ? 'bad' : ''}">${act.length}/26</b></div><div><small>Hitters / Pitchers</small><b>${hitA} / ${pitA}</b></div><div><small>Injured list</small><b>${il.length}</b></div><div><small>AAA / AA</small><b>${aaa.length} / ${aa.length}</b></div><div><small>Total (${App.st.settings.aa ? 110 : 44} max)</small><b>${all.length}</b></div><div><small>Payroll / Budget</small><b>${money(F.payroll(st, tid))} / ${money(t.bud)}</b></div></div>
   <div class="tabs">${[['mlb', `MLB Active (${act.length})`], ['aaa', `AAA (${aaa.length})`], ...(aa.length || App.st.settings.aa ? [['aa', `AA (${aa.length})`]] : []), ['il', `Injured List (${il.length})`]].map(([k, l]) => `<a class="${tab === k ? 'on' : ''}" data-act="tab" data-g="roster" data-v="${k}">${l}</a>`).join('')}</div>
-  ${affName ? `<p><b>${esc(affName)}</b> <span class="muted sm">· 2026 stats shown on each player's card</span></p>` : ''}
+  ${affName ? `<p><b>${esc(affName)}</b> <span class="muted sm">· ${(() => { const r = (t.mrec || {})[tab === 'aaa' ? 1 : 2]; return r ? `${r[0]}-${r[1]} this season · ` : ''; })()}stats below are this season's minor league games</span></p>` : ''}
   <p class="muted sm">Click any column header to sort. ± is how much a player's overall has moved this season based on performance.</p>
   ${mine ? `<p class="muted sm">Click ▲/▼ to call up or option players. Max 26 active and 13 pitchers. Players on the IL (10+ days) don't count toward 26.</p>` : ''}
   <div class="card flush">${rosterTable(hit, false, mine, tab)}</div><div class="card flush">${rosterTable(pit, true, mine, tab)}</div>`;
@@ -391,14 +391,16 @@ function rosterTable(list, pit, mine, tab) {
   if (!list.length) return `<p class="muted pad">No ${pit ? 'pitchers' : 'position players'}.</p>`;
   const t = T(viewTeam());
   const roleOf = p => t && t.pen ? F.roleOf(t, p.id) : '';
-  const sb = (p, k) => p.sb ? p.sb[B[k]] : -1, sp = (p, k) => p.sp ? p.sp[P[k]] : -1;
+  const MIN = tab === 'aaa' || tab === 'aa';
+  const SB = p => MIN ? p.mb : p.sb, SPx = p => MIN ? p.mp : p.sp;
+  const sb = (p, k) => SB(p) ? SB(p)[B[k]] : -1, sp = (p, k) => SPx(p) ? SPx(p)[P[k]] : -1;
   const cols = pit ? [
     ['Pos', p => F.POS_ORDER_IDX(p.p)], ['Name', p => p.l], ['Age', p => p.a], ['T', p => p.t], ['OVR', p => p.o], ['±', p => p.trend || 0], ['POT', p => p.pt],
     ['VEL', p => p.r.vel], ['CTL', p => p.r.ctl], ['BRK', p => p.r.brk], ['STA', p => p.r.sta], ['Role', p => roleOf(p)],
-    ['W', p => sp(p, 'w')], ['L', p => sp(p, 'l')], ['ERA', p => p.sp ? -F.pitLine(p.sp).era : -99], ['IP', p => sp(p, 'o')], ['K', p => sp(p, 'k')], ['SV', p => sp(p, 'sv')], ['NRG', p => p.e], ['$', p => p.sal], ['Yrs', p => p.y]]
+    ['W', p => sp(p, 'w')], ['L', p => sp(p, 'l')], ['ERA', p => SPx(p) ? -F.pitLine(SPx(p)).era : -99], ['IP', p => sp(p, 'o')], ['K', p => sp(p, 'k')], ['SV', p => sp(p, 'sv')], ['NRG', p => p.e], ['$', p => p.sal], ['Yrs', p => p.y]]
     : [['Pos', p => F.POS_ORDER_IDX(p.p)], ['Name', p => p.l], ['Age', p => p.a], ['B/T', p => p.b], ['OVR', p => p.o], ['±', p => p.trend || 0], ['POT', p => p.pt],
     ['CON', p => p.r.con], ['POW', p => p.r.pow], ['EYE', p => p.r.eye], ['SPD', p => p.r.spd], ['FLD', p => p.r.fld], ['ARM', p => p.r.arm],
-    ['G', p => sb(p, 'g')], ['AVG', p => p.sb ? F.batLine(p.sb).avg : -1], ['HR', p => sb(p, 'hr')], ['RBI', p => sb(p, 'rbi')], ['SB', p => sb(p, 'sb')], ['OPS', p => p.sb ? F.batLine(p.sb).ops : -1], ['$', p => p.sal], ['Yrs', p => p.y]];
+    ['G', p => sb(p, 'g')], ['AVG', p => SB(p) ? F.batLine(SB(p)).avg : -1], ['HR', p => sb(p, 'hr')], ['RBI', p => sb(p, 'rbi')], ['SB', p => sb(p, 'sb')], ['OPS', p => SB(p) ? F.batLine(SB(p)).ops : -1], ['$', p => p.sal], ['Yrs', p => p.y]];
   const g = pit ? 'rosP' : 'rosH';
   const sk = App.sort[g], col = cols.find(c => c[0] === sk);
   let rows = list.slice();
@@ -409,11 +411,12 @@ function rosterTable(list, pit, mine, tab) {
     if (mine) actb = `<td class="nw">${p.lv >= 1 ? `<button class="mini" data-act="move" data-id="${p.id}" data-to="${p.lv - 1}" title="Promote to ${LVN[p.lv - 1]}">▲</button>` : ''}${p.lv < maxLv() ? `<button class="mini" data-act="move" data-id="${p.id}" data-to="${p.lv + 1}" title="Send to ${LVN[p.lv + 1]}">▼</button>` : ''}<button class="mini ghost" data-act="tradeAdd" data-id="${p.id}" title="Add to trade">⇄</button></td>`;
     const st0 = '<td>—</td>';
     let stats;
-    if (pit) { const l = p.sp ? F.pitLine(p.sp) : null; stats = p.sp ? `<td>${p.sp[P.w]}</td><td>${p.sp[P.l]}</td><td>${f2(l.era)}</td><td>${ipS(p.sp[P.o])}</td><td>${p.sp[P.k]}</td><td>${p.sp[P.sv]}</td>` : st0.repeat(6); stats += `<td>${energy(p)}</td>`; }
-    else { const l = p.sb ? F.batLine(p.sb) : null; stats = p.sb ? `<td>${p.sb[B.g]}</td><td>${f3(l.avg)}</td><td>${p.sb[B.hr]}</td><td>${p.sb[B.rbi]}</td><td>${p.sb[B.sb]}</td><td>${f3(l.ops)}</td>` : st0.repeat(6); }
+    if (pit) { const q = SPx(p); const l = q ? F.pitLine(q) : null; stats = q ? `<td>${q[P.w]}</td><td>${q[P.l]}</td><td>${f2(l.era)}</td><td>${ipS(q[P.o])}</td><td>${q[P.k]}</td><td>${q[P.sv]}</td>` : st0.repeat(6); stats += `<td>${energy(p)}</td>`; }
+    else { const q = SB(p); const l = q ? F.batLine(q) : null; stats = q ? `<td>${q[B.g]}</td><td>${f3(l.avg)}</td><td>${q[B.hr]}</td><td>${q[B.rbi]}</td><td>${q[B.sb]}</td><td>${f3(l.ops)}</td>` : st0.repeat(6); }
     const rk = pit ? ['vel', 'ctl', 'brk', 'sta'] : ['con', 'pow', 'eye', 'spd', 'fld', 'arm'];
     const role = pit ? `<td>${p.lv === 0 ? `<span class="tag">${roleOf(p) === 'MR' && (t.rot || []).includes(p.id) ? 'SP' + ((t.rot || []).indexOf(p.id) + 1) : roleOf(p)}</span>` : ''}</td>` : '';
-    return `<tr><td><b>${p.p}</b></td><td class="l">${plink(p)} ${injTag(p)}${p.rk && p.a <= 25 ? '<span class="tag">R</span>' : ''}</td><td>${p.a}</td><td>${pit ? p.t : p.b + '/' + p.t}</td><td><span class="ov ${rc(p.o)}">${p.o}</span></td><td>${trendTag(p)}</td><td>${potTag(p)}</td>${rk.map(k => `<td class="${rc(p.r[k])}t">${Math.round(p.r[k])}</td>`).join('')}${role}${stats}<td>${money(p.sal)}</td><td>${p.y}</td>${actb}</tr>`;
+    const sec = F.POS_ALL.filter(x => x !== p.p && F.famAt(p, x) >= 75); const secS = !pit && sec.length ? `<div class="muted sm">${sec.join(', ')}</div>` : '';
+    return `<tr><td><b>${p.p}</b>${secS}${p.learn ? `<div class="sm" title="Training at ${p.learn}">🎯${p.learn}</div>` : ''}</td><td class="l">${plink(p)} ${injTag(p)}${p.rk && p.a <= 25 ? '<span class="tag">R</span>' : ''}</td><td>${p.a}</td><td>${pit ? p.t : p.b + '/' + p.t}</td><td><span class="ov ${rc(p.o)}">${p.o}</span></td><td>${trendTag(p)}</td><td>${potTag(p)}</td>${rk.map(k => `<td class="${rc(p.r[k])}t">${Math.round(p.r[k])}</td>`).join('')}${role}${stats}<td>${money(p.sal)}</td><td>${p.y}</td>${actb}</tr>`;
   }).join('');
   return `<div class="scroll"><table class="t">${head}${body}</table></div>`;
 }
@@ -426,8 +429,13 @@ function openPlayer(id) {
   const bars = rk.map(([k, l]) => `<div class="bar"><span>${l}</span><i><b class="${rc(p.r[k])}" style="width:${p.r[k]}%"></b></i><em>${Math.round(p.r[k])}</em></div>`).join('');
   const team = p.tid >= 0 ? `${tb(p.tid)} ${esc(F.tname(T(p.tid)))} · ${LVN[p.lv]}` : p.tid === -2 ? 'Draft prospect' : 'Free agent';
   const seasons = (p.c || []).slice().reverse().map(c => pit ? pitRow(c.y, c.t, c.p) : batRow(c.y, c.t, c.b)).join('');
-  const cur = pit ? (p.sp ? pitRow(st.season, p.tid >= 0 ? T(p.tid).ab : 'FA', p.sp, true) : '') : (p.sb ? batRow(st.season, p.tid >= 0 ? T(p.tid).ab : 'FA', p.sb, true) : '');
-  const posR = !pit ? `<div class="posr">${F.LPOS.filter(x => x !== 'DH').map(x => `<span class="${rc(F.ovrAt(p, x))}t">${x} ${Math.round(F.ovrAt(p, x))}</span>`).join('')}</div>` : '';
+  const affAb = p.tid >= 0 && T(p.tid).aff ? (p.lv === 2 && T(p.tid).aff.aa ? T(p.tid).aff.aa[1] + ' (AA)' : T(p.tid).aff.aaa ? T(p.tid).aff.aaa[1] + ' (AAA)' : 'MiLB') : 'MiLB';
+  const cur = (pit ? (p.sp ? pitRow(st.season, p.tid >= 0 ? T(p.tid).ab : 'FA', p.sp, true) : '') : (p.sb ? batRow(st.season, p.tid >= 0 ? T(p.tid).ab : 'FA', p.sb, true) : '')) + (pit ? (p.mp ? pitRow(st.season, affAb, p.mp, true) : '') : (p.mb ? batRow(st.season, affAb, p.mb, true) : ''));
+  const mineP = p.tid >= 0 && canControl(p.tid);
+  const posList = pit ? ['SP', 'RP'] : F.POS_ALL;
+  const famRows = posList.map(x => { const fm = Math.round(F.famAt(p, x)); return { x, fm }; }).sort((a, b) => b.fm - a.fm);
+  const posR = `<h4 style="margin-top:12px">Positions & familiarity</h4><div class="fams">${famRows.map(({ x, fm }) => `<div class="fam${x === p.p ? ' pri' : ''}${p.learn === x ? ' tr' : ''}"><b>${x}</b><i><em style="width:${fm}%"></em></i><span>${x === p.p ? 'Primary' : fm}</span>${!pit ? `<small class="muted">${Math.round(F.ovrAt(p, x))}</small>` : ''}${mineP && x !== p.p ? `<span class="fbtns">${p.learn === x ? `<button class="mini on" data-act="train" data-id="${p.id}" data-pos="">Training ✓</button>` : `<button class="mini ghost" data-act="train" data-id="${p.id}" data-pos="${x}">Train</button>`}${fm >= 85 ? `<button class="mini" data-act="makePrimary" data-id="${p.id}" data-pos="${x}">Make primary</button>` : ''}</span>` : ''}</div>`).join('')}</div>
+  <p class="muted sm">Familiarity grows each game a player is used at a position (faster when young). ${mineP ? 'Choose “Train” to have him practice there daily and play there in minor league games.' : ''}</p>`;
   const mine = p.tid >= 0 && canControl(p.tid);
   let actions = '';
   if (mine) actions = `<div class="row">${p.lv >= 1 ? `<button class="btn" data-act="move" data-id="${p.id}" data-to="${p.lv - 1}">Promote to ${LVN[p.lv - 1]}</button>` : ''}${p.lv < maxLv() ? `<button class="btn" data-act="move" data-id="${p.id}" data-to="${p.lv + 1}">Send to ${LVN[p.lv + 1]}</button>` : ''}<button class="btn ghost" data-act="tradeAdd" data-id="${p.id}">Add to trade</button><button class="btn bad ghost" data-act="release" data-id="${p.id}">Release</button></div>`;
@@ -583,15 +591,26 @@ function divTable(lg, dv, compact) {
   const my = myTid();
   return `<table class="t st"><tr><th class="l">${F.LG[lg]} ${F.DIVS[dv]}</th><th>W</th><th>L</th><th>PCT</th><th>GB</th>${compact ? '' : '<th>RS</th><th>RA</th><th>DIFF</th><th>STRK</th><th>L10</th>'}</tr>${ts.map(t => { const gb = ((lead.w - t.w) + (t.l - lead.l)) / 2; return `<tr class="${t.id === my ? 'me' : ''}"><td class="l">${tb(t.id)} <a class="pl" data-act="team" data-id="${t.id}">${esc(t.name)}</a>${t.user ? ' ★' : ''}</td><td>${t.w}</td><td>${t.l}</td><td>${f3(F.pct(t))}</td><td>${gb ? gb : '—'}</td>${compact ? '' : `<td>${t.rs}</td><td>${t.ra}</td><td class="${t.rs - t.ra >= 0 ? 'good' : 'bad'}">${t.rs - t.ra >= 0 ? '+' : ''}${t.rs - t.ra}</td><td>${t.strk > 0 ? 'W' + t.strk : t.strk < 0 ? 'L' + (-t.strk) : '-'}</td><td>${t.l10.filter(x => x).length}-${t.l10.filter(x => !x).length}</td>`}</tr>`; }).join('')}</table>`;
 }
+function V_minorStandings(L) {
+  const st = App.st; const my = myTid();
+  const rows = st.teams.map(t => { const r = (t.mrec || {})[L] || [0, 0, 0, 0]; return { t, r }; }).sort((a, b) => (b.r[0] / Math.max(1, b.r[0] + b.r[1])) - (a.r[0] / Math.max(1, a.r[0] + a.r[1])) || (b.r[2] - b.r[3]) - (a.r[2] - a.r[3]));
+  const lead = rows[0].r;
+  return `<div class="card flush scroll tall"><table class="t st"><tr><th>#</th><th class="l">${L === 1 ? 'Triple-A' : 'Double-A'} club</th><th>Parent</th><th>W</th><th>L</th><th>PCT</th><th>GB</th><th>RS</th><th>RA</th><th>DIFF</th></tr>${rows.map((o, i) => { const r = o.r; const nm = o.t.aff ? (L === 1 ? o.t.aff.aaa : o.t.aff.aa) : null; const gb = ((lead[0] - r[0]) + (r[1] - lead[1])) / 2;
+    return `<tr class="${o.t.id === my ? 'me' : ''}"><td>${i + 1}</td><td class="l"><b>${esc(nm ? nm[0] : o.t.ab + (L === 1 ? ' AAA' : ' AA'))}</b></td><td>${tb(o.t.id)}</td><td>${r[0]}</td><td>${r[1]}</td><td>${f3(r[0] / Math.max(1, r[0] + r[1]))}</td><td>${gb || '—'}</td><td>${r[2]}</td><td>${r[3]}</td><td class="${r[2] - r[3] >= 0 ? 'good' : 'bad'}">${r[2] - r[3] >= 0 ? '+' : ''}${r[2] - r[3]}</td></tr>`; }).join('')}</table></div>
+  <p class="muted sm">Minor league clubs play every day of the regular season. Players there earn stats, get familiar with new positions, and develop faster when they play regularly.</p>`;
+}
 function V_standings() {
   const st = App.st;
+  const lvTab = App.tab.standings || 'mlb';
+  const lvTabs = `<div class="tabs"><a class="${lvTab === 'mlb' ? 'on' : ''}" data-act="tab" data-g="standings" data-v="mlb">MLB</a><a class="${lvTab === 'aaa' ? 'on' : ''}" data-act="tab" data-g="standings" data-v="aaa">Triple-A</a>${st.settings.aa ? `<a class="${lvTab === 'aa' ? 'on' : ''}" data-act="tab" data-g="standings" data-v="aa">Double-A</a>` : ''}</div>`;
+  if (lvTab !== 'mlb') return `<div class="pagehead"><h2>Standings</h2></div>${lvTabs}${V_minorStandings(lvTab === 'aaa' ? 1 : 2)}`;
   const wc = lg => {
     const sd = F.seeds(st, lg); const divW = sd.slice(0, 3);
     const rest = st.teams.filter(t => t.lg === lg && !divW.includes(t.id)).sort((a, b) => F.pct(b) - F.pct(a));
     const third = rest[2];
     return `<table class="t st"><tr><th class="l">${F.LG[lg]} Wild Card</th><th>W</th><th>L</th><th>PCT</th><th>WCGB</th></tr>${rest.slice(0, 8).map((t, i) => { const gb = third ? ((third.w - t.w) + (t.l - third.l)) / 2 : 0; return `<tr class="${i === 2 ? 'cut' : ''}${t.id === myTid() ? ' me' : ''}"><td class="l">${tb(t.id)} ${esc(t.name)}</td><td>${t.w}</td><td>${t.l}</td><td>${f3(F.pct(t))}</td><td>${i < 3 ? (i === 2 ? '—' : '+' + (-gb)) : gb}</td></tr>`; }).join('')}</table>`;
   };
-  return `<div class="pagehead"><h2>Standings</h2></div>
+  return `<div class="pagehead"><h2>Standings</h2></div>${lvTabs}
   <div class="grid2">${[0, 1].map(lg => `<div><h3>${F.LEAGUES[lg]}</h3>${[0, 1, 2].map(d => `<div class="card flush">${divTable(lg, d)}</div>`).join('')}<div class="card flush">${wc(lg)}</div></div>`).join('')}</div>
   <p class="muted sm">Six teams per league make the postseason: three division winners and three wild cards. Top two seeds get a bye past the Wild Card Series.</p>`;
 }
@@ -603,18 +622,20 @@ function V_stats() {
   const scope = App.filt.scope || 'all';
   const qual = App.filt.qual !== false;
   const g = Math.max(1, avgGames());
-  let ps = Object.values(st.players).filter(p => p.tid >= 0 && (kind === 'bat' ? p.sb : p.sp));
+  const LVL = scope === 'aaa' ? 1 : scope === 'aa' ? 2 : 0;
+  const SB = p => LVL ? p.mb : p.sb, SPx = p => LVL ? p.mp : p.sp;
+  let ps = Object.values(st.players).filter(p => p.tid >= 0 && (LVL ? p.lv === LVL : true) && (kind === 'bat' ? SB(p) : SPx(p)));
   if (scope === 'cl') ps = ps.filter(p => T(p.tid).lg === 0); else if (scope === 'fl') ps = ps.filter(p => T(p.tid).lg === 1); else if (scope === 'mine' && myTid() != null) ps = ps.filter(p => p.tid === myTid()); else if (/^t\d+$/.test(scope)) ps = ps.filter(p => p.tid === +scope.slice(1));
-  if (qual) ps = ps.filter(p => kind === 'bat' ? p.sb[B.pa] >= g * 3.1 : p.sp[P.o] >= g * 3 || p.sp[P.sv] >= 5 || (p.p === 'RP' && p.sp[P.o] >= g));
+  if (qual) ps = ps.filter(p => kind === 'bat' ? SB(p)[B.pa] >= g * 3.1 : SPx(p)[P.o] >= g * 3 || SPx(p)[P.sv] >= 5 || (p.p === 'RP' && SPx(p)[P.o] >= g));
   let cols;
-  if (kind === 'bat') cols = [['G', p => p.sb[B.g]], ['PA', p => p.sb[B.pa]], ['H', p => p.sb[B.h]], ['2B', p => p.sb[B.d]], ['HR', p => p.sb[B.hr]], ['R', p => p.sb[B.r]], ['RBI', p => p.sb[B.rbi]], ['BB', p => p.sb[B.bb]], ['K', p => p.sb[B.k]], ['SB', p => p.sb[B.sb]], ['AVG', p => F.batLine(p.sb).avg, f3], ['OBP', p => F.batLine(p.sb).obp, f3], ['SLG', p => F.batLine(p.sb).slg, f3], ['OPS', p => F.batLine(p.sb).ops, f3], ['WAR', p => F.war(p)]];
-  else cols = [['G', p => p.sp[P.g]], ['GS', p => p.sp[P.gs]], ['W', p => p.sp[P.w]], ['L', p => p.sp[P.l]], ['SV', p => p.sp[P.sv]], ['IP', p => p.sp[P.o], ipS], ['H', p => p.sp[P.h]], ['BB', p => p.sp[P.bb]], ['K', p => p.sp[P.k]], ['HR', p => p.sp[P.hr]], ['ERA', p => F.pitLine(p.sp).era, f2, 1], ['WHIP', p => F.pitLine(p.sp).whip, f2, 1], ['K/9', p => F.pitLine(p.sp).k9, x => x.toFixed(1)], ['WAR', p => F.war(p)]];
+  if (kind === 'bat') cols = [['G', p => SB(p)[B.g]], ['PA', p => SB(p)[B.pa]], ['H', p => SB(p)[B.h]], ['2B', p => SB(p)[B.d]], ['HR', p => SB(p)[B.hr]], ['R', p => SB(p)[B.r]], ['RBI', p => SB(p)[B.rbi]], ['BB', p => SB(p)[B.bb]], ['K', p => SB(p)[B.k]], ['SB', p => SB(p)[B.sb]], ['AVG', p => F.batLine(SB(p)).avg, f3], ['OBP', p => F.batLine(SB(p)).obp, f3], ['SLG', p => F.batLine(SB(p)).slg, f3], ['OPS', p => F.batLine(SB(p)).ops, f3], ['WAR', p => LVL ? 0 : F.war(p), x => LVL ? '—' : x]];
+  else cols = [['G', p => SPx(p)[P.g]], ['GS', p => SPx(p)[P.gs]], ['W', p => SPx(p)[P.w]], ['L', p => SPx(p)[P.l]], ['SV', p => SPx(p)[P.sv]], ['IP', p => SPx(p)[P.o], ipS], ['H', p => SPx(p)[P.h]], ['BB', p => SPx(p)[P.bb]], ['K', p => SPx(p)[P.k]], ['HR', p => SPx(p)[P.hr]], ['ERA', p => F.pitLine(SPx(p)).era, f2, 1], ['WHIP', p => F.pitLine(SPx(p)).whip, f2, 1], ['K/9', p => F.pitLine(SPx(p)).k9, x => x.toFixed(1)], ['WAR', p => LVL ? 0 : F.war(p), x => LVL ? '—' : x]];
   const sk = App.sort[kind] || (kind === 'bat' ? 'OPS' : 'ERA');
   const col = cols.find(c => c[0] === sk) || cols[0];
   const asc = col[3] ? !App.sort[kind + 'rev'] : !!App.sort[kind + 'rev'];
   ps.sort((a, b) => asc ? col[1](a) - col[1](b) : col[1](b) - col[1](a));
-  const rows = ps.slice(0, 150).map((p, i) => `<tr class="${p.tid === myTid() ? 'me' : ''}"><td>${i + 1}</td><td class="l">${plink(p)}</td><td>${tb(p.tid)}</td><td>${p.p}</td>${cols.map(c => `<td class="${c[0] === sk ? 'sorted' : ''}">${(c[2] || (x => x))(c[1](p))}</td>`).join('')}</tr>`).join('');
-  const sopt = [['all', 'All MLB'], ['cl', F.LEAGUES[0]], ['fl', F.LEAGUES[1]], ...(myTid() != null ? [['mine', 'My team']] : []), ...st.teams.map(t => ['t' + t.id, t.ab + ' ' + t.name])];
+  const rows = ps.slice(0, 150).map((p, i) => `<tr class="${p.tid === myTid() ? 'me' : ''}"><td>${i + 1}</td><td class="l">${plink(p)}</td><td>${tb(p.tid)}${LVL ? `<div class="muted sm">${LVN[p.lv]}</div>` : ''}</td><td>${p.p}</td>${cols.map(c => `<td class="${c[0] === sk ? 'sorted' : ''}">${(c[2] || (x => x))(c[1](p))}</td>`).join('')}</tr>`).join('');
+  const sopt = [['all', 'All MLB'], ['aaa', 'Triple-A (all teams)'], ...(st.settings.aa ? [['aa', 'Double-A (all teams)']] : []), ['cl', F.LEAGUES[0]], ['fl', F.LEAGUES[1]], ...(myTid() != null ? [['mine', 'My team']] : []), ...st.teams.map(t => ['t' + t.id, t.ab + ' ' + t.name])];
   return `<div class="pagehead"><h2>Stats — ${st.season}</h2><div class="row"><select data-chg="scope">${sopt.map(o => `<option value="${o[0]}"${o[0] === scope ? ' selected' : ''}>${esc(o[1])}</option>`).join('')}</select><label class="chk"><input type="checkbox" data-chg="qual"${qual ? ' checked' : ''}> Qualified only</label></div></div>
   <div class="tabs"><a class="${kind === 'bat' ? 'on' : ''}" data-act="tab" data-g="stats" data-v="bat">Batting</a><a class="${kind === 'pit' ? 'on' : ''}" data-act="tab" data-g="stats" data-v="pit">Pitching</a></div>
   <div class="card flush scroll tall"><table class="t"><tr><th>#</th><th class="l">Player</th><th>Tm</th><th>Pos</th>${cols.map(c => `<th class="sort${c[0] === sk ? ' on' : ''}" data-act="sort" data-g="${kind}" data-k="${c[0]}">${c[0]}</th>`).join('')}</tr>${rows || `<tr><td colspan=20 class="muted">No stats yet${qual ? ' (try turning off Qualified only)' : ''}.</td></tr>`}</table></div>`;
@@ -720,11 +741,29 @@ function histTable() {
 }
 
 /* ---------------- LEAGUE ---------------- */
+const TXK = [['trade', 'Trades', '#5aa9e6'], ['fa', 'FA signings', '#4cc38a'], ['resign', 'Re-signings', '#7fc8a9'], ['draft', 'Draft', '#f2c94c'], ['recall', 'Recalled', '#9b8cf0'], ['option', 'Sent down (MLB→AAA)', '#e0873a'], ['promote', 'Sent up', '#7ad3c4'], ['senddown', 'Sent down (AAA→AA)', '#c98a57'], ['release', 'Released', '#ef6461'], ['waive', 'Waived', '#d4777b'], ['position', 'Position changes', '#b9c6d2'], ['staff', 'Staff moves', '#8796a6'], ['other', 'Other', '#5d6b7a']];
+function txnKind(x) { if (x.k) return x.k; const t = x.t || ''; return /^TRADE/.test(t) ? 'trade' : /signed (FA|free agent)/.test(t) ? 'fa' : /re-signed/.test(t) ? 'resign' : /Draft R|Fantasy draft/.test(t) ? 'draft' : /released/.test(t) ? 'release' : /called up|recalled/.test(t) ? 'recall' : /optioned/.test(t) ? 'option' : /hired|parted ways/.test(t) ? 'staff' : 'other'; }
+function V_txn() {
+  const st = App.st; const my = myTid();
+  const kf = App.filt.txk || 'all', tf = App.filt.txt != null ? App.filt.txt : 'all', order = App.sort.txn || 'new';
+  let list = st.txn.map((x, i) => Object.assign({ _i: i, _k: txnKind(x) }, x));
+  if (kf !== 'all') list = list.filter(x => x._k === kf);
+  if (tf === 'mine' && my != null) list = list.filter(x => (x.tm || []).includes(my) || (x.t || '').includes(T(my).ab + ' '));
+  else if (tf !== 'all' && tf !== 'mine') list = list.filter(x => (x.tm || []).includes(+tf) || (x.t || '').startsWith(T(+tf).ab + ' ') || (x.t || '').includes(' ' + T(+tf).ab + ' '));
+  if (order === 'old') list.reverse();
+  else if (order === 'type') list.sort((a, b) => TXK.findIndex(k => k[0] === a._k) - TXK.findIndex(k => k[0] === b._k) || a._i - b._i);
+  const counts = {}; st.txn.forEach(x => { const k = txnKind(x); counts[k] = (counts[k] || 0) + 1; });
+  const chips = `<div class="chips txchips"><button class="chip${kf === 'all' ? ' on' : ''}" style="--c:#2b3a48" data-act="txk" data-k="all">All (${st.txn.length})</button>${TXK.filter(k => counts[k[0]]).map(k => `<button class="chip${kf === k[0] ? ' on' : ''}" style="--c:${k[2]}" data-act="txk" data-k="${k[0]}">${k[1]} (${counts[k[0]]})</button>`).join('')}</div>`;
+  const rows = list.slice(0, 400).map(x => { const k = TXK.find(q => q[0] === x._k) || TXK[TXK.length - 1];
+    return `<tr><td class="nw">${x.s} · ${esc(x.d)}</td><td><span class="txtag" style="--c:${k[2]}">${k[1].replace(/ \(.*\)/, '')}</span></td><td class="nw">${(x.tm || []).map(id => tb(id)).join(' ')}</td><td class="l">${esc(x.t)}</td></tr>`; }).join('');
+  return `<div class="row" style="justify-content:space-between;margin-bottom:8px">${chips}<div class="row"><select data-chg="txt"><option value="all">All teams</option>${my != null ? `<option value="mine"${tf === 'mine' ? ' selected' : ''}>My team</option>` : ''}${st.teams.map(t => `<option value="${t.id}"${String(tf) === String(t.id) ? ' selected' : ''}>${t.ab} — ${esc(t.name)}</option>`).join('')}</select><select data-chg="txo"><option value="new"${order === 'new' ? ' selected' : ''}>Newest first</option><option value="old"${order === 'old' ? ' selected' : ''}>Oldest first</option><option value="type"${order === 'type' ? ' selected' : ''}>By type</option></select></div></div>
+  <div class="card flush scroll tall"><table class="t"><tr><th>Date</th><th>Type</th><th>Team</th><th class="l">Transaction</th></tr>${rows || '<tr><td colspan=4 class="muted">No transactions match.</td></tr>'}</table></div>`;
+}
 function V_league() {
   const st = App.st; const tab = App.tab.league || 'news';
   let body = '';
   if (tab === 'news') body = `<div class="card">${newsList(st.news)}</div>`;
-  if (tab === 'txn') body = `<div class="card"><ul class="news">${st.txn.map(x => `<li><small>${x.s} · ${esc(x.d)}</small>${esc(x.t)}</li>`).join('') || '<li class="muted">No transactions yet.</li>'}</ul></div>`;
+  if (tab === 'txn') body = V_txn();
   if (tab === 'hist') body = histTable() + st.history.map(h => `<section class="card"><h3>${h.y} Awards</h3><div class="awards">${h.aw.map(a => `<div><small>${esc(a[0])}</small><b>${esc(a[1])}</b></div>`).join('')}</div></section>`).join('') || '<div class="card muted">Complete a season to build league history.</div>';
   if (tab === 'teams') body = `<div class="card flush"><table class="t"><tr><th class="l">Team</th><th>Rec</th><th>OVR (top 26)</th><th>Payroll</th><th>Budget</th><th>Market</th><th>Manager</th></tr>${st.teams.map(t => { const a = F.active(st, t.id).sort((x, y) => y.o - x.o).slice(0, 26); const ov = Math.round(a.reduce((s, p) => s + p.o, 0) / Math.max(1, a.length)); return `<tr><td class="l">${tb(t.id)} ${tlink(t.id)}</td><td>${rec(t)}</td><td><span class="ov ${rc(ov)}">${ov}</span></td><td>${money(F.payroll(st, t.id))}</td><td>${money(t.bud)}</td><td>${['', 'Small', 'Mid', 'Large'][t.mkt]}</td><td>${t.user ? (App.mode === 'shared' ? esc(uname(t.user)) : 'You') : '<span class="muted">AI</span>'}</td></tr>`; }).join('')}</table></div>`;
   return `<div class="pagehead"><h2>League Office</h2></div><div class="tabs">${[['news', 'News'], ['txn', 'Transactions'], ['teams', 'Teams'], ['hist', 'History & Awards']].map(([k, l]) => `<a class="${tab === k ? 'on' : ''}" data-act="tab" data-g="league" data-v="${k}">${l}</a>`).join('')}</div>${body}`;
@@ -1080,9 +1119,9 @@ const H = {
       if (to === 0) {
         const a = F.active(st, p.tid); if (!F.onIL(p) && a.length >= 26) return 'Your active roster is full (26). Option someone first.';
         if (F.isP(p) && a.filter(F.isP).length >= 13) return 'Max 13 pitchers on the active roster.';
-        p.lv = 0; F.txnAdd(st, `${st.teams[p.tid].ab} called up ${F.pname(p)}`);
+        const wl = p.lv; p.lv = 0; F.txnAdd(st, `${st.teams[p.tid].ab} recalled ${p.p} ${F.pname(p)} from ${wl === 2 ? 'AA' : 'AAA'}`, 'recall', p.tid);
       } else {
-        const was = p.lv; p.lv = to; const t = st.teams[p.tid]; F.txnAdd(st, `${t.ab} ${was === 0 ? 'optioned' : to < was ? 'promoted' : 'assigned'} ${F.pname(p)} to ${LVN[to]}`);
+        const was = p.lv; p.lv = to; const t = st.teams[p.tid]; F.txnAdd(st, `${t.ab} ${was === 0 ? 'optioned' : to < was ? 'promoted' : 'sent down'} ${p.p} ${F.pname(p)} to ${LVN[to]}`, was === 0 ? 'option' : to < was ? 'promote' : 'senddown', p.tid);
         if (t.lu) t.lu = t.lu.filter(s => s.id !== id).length === 9 ? t.lu : F.repairLineup(st, t);
         F.fixRotation(st, t);
       }
@@ -1143,6 +1182,9 @@ const H = {
   dmSend: async () => { const t = (App.dmDraft || '').trim(); if (!t) return; const to = App.conv || 'all'; try { await S.sendMsg(App.id, to, t); App.dmDraft = ''; render(); } catch (e) { toast('Could not send: ' + esc(e.message || ''), 'err'); } },
   nick: () => { if (window.FOB_ASKNAME) window.FOB_ASKNAME(() => { App.names = {}; render(); }); },
   copyInv: async () => { const u = inviteLink(App.id); try { await navigator.clipboard.writeText(u); toast('Invite link copied!', 'good'); } catch (e) { const i = $('#invUrl'); if (i && i.select) i.select(); toast('Select the link and copy it.', ''); } },
+  txk: el => { App.filt.txk = el.dataset.k; render(); },
+  train: el => { const id = +el.dataset.id, pos = el.dataset.pos; closeModal(); act(st => F.setTrain(st, id, pos) || undefined).then(() => openPlayer(id)); },
+  makePrimary: el => { const id = +el.dataset.id, pos = el.dataset.pos; closeModal(); act(st => F.setPrimary(st, id, pos) || undefined).then(() => openPlayer(id)); },
   calM: el => { App.calM = (App.calM || 0) + (+el.dataset.d); render(); },
   vote: el => { const voter = App.mode === 'shared' ? S.uid : 'local'; act(st => F.asgVote(st, voter, +el.dataset.id) || undefined); },
   lst: el => { const k = el.dataset.k, id = +el.dataset.id, my = myTid(); const max = { block: 10, tgt: 15, unt: 5 }[k]; closeModal(); act(st => F.toggleList(st, my, k, id, max) || undefined).then(() => { if (App.view !== 'hub' && $('#modal').style.display !== 'flex') openPlayer(id); }); },
@@ -1178,6 +1220,9 @@ const C = {
   prvs: el => { const i = +el.dataset.i, v = el.value; editLineup((st, t) => { if (!t.pen || !t.pen.spec[i]) return 'Pick a specialist first.'; t.pen.spec[i].vs = v; }); },
   scReg: el => { const v = el.value, my = myTid(); act(st => F.scoutAssign(st, my, v.startsWith('pro:') ? { pro: +v.slice(4) } : { reg: v }) || undefined); },
   goatF: el => { App.filt.goat = el.value; render(); },
+  txt: el => { App.filt.txt = el.value; render(); },
+  txo: el => { App.sort.txn = el.value; render(); },
+  stLvl: el => { App.tab.standings = el.value; render(); },
   farole: el => { App.filt.farole = el.value; render(); },
   scFilt: el => { App.filt.screg = el.value; render(); },
   staffTeam: el => { App.staffT = +el.value; render(); },
