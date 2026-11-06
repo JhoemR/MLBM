@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Front Office Baseball — Setup Guide</title>
+<style>
+body{font:16px/1.6 system-ui,-apple-system,Segoe UI,sans-serif;max-width:760px;margin:0 auto;padding:28px 18px;color:#1d2730;background:#fafbfc}
+h1{font-size:28px;margin:0 0 4px}h2{margin:34px 0 8px;font-size:21px;border-top:1px solid #e3e7eb;padding-top:22px}
+.lead{color:#5a6773;margin:0 0 18px}.box{background:#fff;border:1px solid #e3e7eb;border-radius:10px;padding:14px 18px;margin:12px 0}
+.tip{background:#fff8e6;border-color:#f2d58a}.warn{background:#fdeeee;border-color:#f0b8b8}
+ol li{margin:6px 0}code,kbd{background:#eef1f4;padding:1px 6px;border-radius:5px;font-size:14px}pre{background:#1d2730;color:#e7edf3;padding:12px 14px;border-radius:8px;overflow:auto;font-size:13px}
+b.step{display:inline-block;background:#f2a541;color:#1b1206;border-radius:50%;width:28px;height:28px;text-align:center;line-height:28px;margin-right:8px}
+</style></head><body>
+<h1>⚾ Front Office Baseball — Setup Guide</h1>
+<p class="lead">Put the game on your own free website so friends can join with just a link — no Claude account needed. About 15 minutes, one time.</p>
+
+<div class="box"><b>What you need:</b> a Google account (for Firebase, free) and a free Netlify account (for the website). Keep the unzipped <code>front-office-baseball</code> folder handy — you'll edit one file in it and upload the whole folder.</div>
+
+<h2><b class="step">1</b>Create a free Firebase project</h2>
+<ol>
+<li>Go to <b>console.firebase.google.com</b> and sign in with Google.</li>
+<li>Click <b>Create a project</b> (or <b>Add project</b>). Name it anything, e.g. <code>my-baseball-league</code>.</li>
+<li>When it asks about Google Analytics, you can turn it <b>off</b>. Click <b>Create project</b>, then <b>Continue</b>.</li>
+</ol>
+<div class="box tip">You stay on the free “Spark” plan. You never need to add a credit card for this.</div>
+
+<h2><b class="step">2</b>Turn on sign-in</h2>
+<ol>
+<li>In the left menu choose <b>Build → Authentication</b>, then <b>Get started</b>.</li>
+<li>Open the <b>Sign-in method</b> tab. Click <b>Anonymous</b>, switch it <b>on</b>, and <b>Save</b>. (This lets friends join with just a nickname.)</li>
+<li><i>Optional:</i> also enable <b>Google</b> so friends can keep their team when they switch devices. Pick a support email and Save.</li>
+</ol>
+
+<h2><b class="step">3</b>Create the database</h2>
+<ol>
+<li>In the left menu choose <b>Build → Firestore Database</b>, then <b>Create database</b>.</li>
+<li>Pick a location near you (any is fine) and choose <b>Start in production mode</b>. Click <b>Create</b>.</li>
+<li>Open the <b>Rules</b> tab. Delete everything there and paste the contents of the file <code>firestore.rules</code> from the folder (open it with Notepad / TextEdit). Click <b>Publish</b>.</li>
+</ol>
+
+<h2><b class="step">4</b>Copy your Firebase settings into the game</h2>
+<ol>
+<li>Click the <b>⚙️ gear</b> next to “Project Overview” → <b>Project settings</b>.</li>
+<li>Scroll to <b>Your apps</b> and click the <b>&lt;/&gt;</b> (Web) icon. Give it a nickname (e.g. <code>baseball</code>). Leave “Firebase Hosting” unchecked. Click <b>Register app</b>.</li>
+<li>You'll see code with <code>const firebaseConfig = { ... }</code>. Copy just the lines inside the curly braces.</li>
+<li>Open <code>firebase-config.js</code> from the folder in Notepad / TextEdit. Replace the example lines inside <code>{ }</code> with yours and save. It should look like:</li>
+</ol>
+<pre>window.FIREBASE_CONFIG = {
+  apiKey: "AIzaSy...your-key...",
+  authDomain: "my-baseball-league.firebaseapp.com",
+  projectId: "my-baseball-league",
+  storageBucket: "my-baseball-league.appspot.com",
+  messagingSenderId: "1234567890",
+  appId: "1:1234567890:web:abc123"
+};</pre>
+<div class="box tip">These settings are meant to be public — they identify your project; your database rules (step 3) are what protect it.</div>
+
+<h2><b class="step">5</b>Put the website online (Netlify)</h2>
+<ol>
+<li>Go to <b>app.netlify.com/drop</b> and sign up / log in (free).</li>
+<li>Drag the whole <code>front-office-baseball</code> folder onto the page. Wait a few seconds.</li>
+<li>Netlify gives you a web address like <code>https://cheerful-otter-123.netlify.app</code>. Open it — the game should load.</li>
+<li><i>Optional:</i> in Netlify, <b>Site configuration → Change site name</b> to get something nicer like <code>jho-baseball.netlify.app</code>.</li>
+</ol>
+
+<h2><b class="step">6</b>If you enabled Google sign-in: allow your website</h2>
+<ol>
+<li>Back in Firebase: <b>Authentication → Settings → Authorized domains → Add domain</b>.</li>
+<li>Add your Netlify address without <code>https://</code>, e.g. <code>jho-baseball.netlify.app</code>.</li>
+</ol>
+
+<h2><b class="step">7</b>Play!</h2>
+<ol>
+<li>Open your site, choose a nickname, click <b>+ Create Multiplayer League</b>, pick your team (and “Fantasy draft” if you want).</li>
+<li>Text your friends the web address. They choose a nickname, open <b>Multiplayer</b>, pick your league and claim a team.</li>
+<li>Chat in the <b>Inbox</b>, set who can advance the calendar in <b>Settings</b>, and have fun.</li>
+</ol>
+
+<h2>Updating the game later</h2>
+<p>When you get new game files, drag the updated folder onto your site in Netlify (<b>Deploys</b> tab → drag & drop). Your leagues are safe — they live in Firebase, not in the files. Always keep your own <code>firebase-config.js</code> in the folder.</p>
+
+<h2>Troubleshooting</h2>
+<div class="box"><b>“Couldn't connect to your Firebase project”</b> on the main menu → double-check <code>firebase-config.js</code> (quotes and commas), that <b>Anonymous</b> sign-in is on, and that the Firestore database exists.</div>
+<div class="box"><b>Moves don't save / “Missing or insufficient permissions”</b> → re-paste <code>firestore.rules</code> in Firestore → Rules and click Publish.</div>
+<div class="box"><b>A friend lost their team after switching phones</b> → nickname-only players are tied to one browser. Enable Google sign-in (step 2 and 6), or the commissioner can free the team in Settings so they can claim it again.</div>
+<div class="box warn"><b>Free limits:</b> Firebase's free plan allows tens of thousands of reads/writes per day — plenty for a group of friends. If you ever hit a limit, the game just pauses saving until the next day.</div>
+<p style="color:#8796a6;font-size:13px;margin-top:30px">Single-player franchises work on this site too; they're saved privately per player.</p>
+</body></html>
