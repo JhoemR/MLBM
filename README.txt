@@ -1,3 +1,5 @@
-Front Office Baseball - self-hosted version
+Front Office Baseball
 
-Open SETUP.html for setup. The only file you edit is firebase-config.js.
+Play: https://jhoemr.github.io/MLBM/
+
+Setup guide: SETUP.html. The only file to edit is firebase-config.js.
