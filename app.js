@@ -1185,6 +1185,8 @@ const H = {
   txk: el => { App.filt.txk = el.dataset.k; render(); },
   train: el => { const id = +el.dataset.id, pos = el.dataset.pos; closeModal(); act(st => F.setTrain(st, id, pos) || undefined).then(() => openPlayer(id)); },
   makePrimary: el => { const id = +el.dataset.id, pos = el.dataset.pos; closeModal(); act(st => F.setPrimary(st, id, pos) || undefined).then(() => openPlayer(id)); },
+  hubF: el => { App.filt[el.dataset.k] = el.dataset.v; render(); },
+  hubTeamPick: el => { App.hubT = el.dataset.id === '' ? null : +el.dataset.id; render(); if (App.hubT != null) { const r = document.querySelector('.treport'); if (r && r.scrollIntoView) r.scrollIntoView({ block: 'start' }); } },
   calM: el => { App.calM = (App.calM || 0) + (+el.dataset.d); render(); },
   vote: el => { const voter = App.mode === 'shared' ? S.uid : 'local'; act(st => F.asgVote(st, voter, +el.dataset.id) || undefined); },
   lst: el => { const k = el.dataset.k, id = +el.dataset.id, my = myTid(); const max = { block: 10, tgt: 15, unt: 5 }[k]; closeModal(); act(st => F.toggleList(st, my, k, id, max) || undefined).then(() => { if (App.view !== 'hub' && $('#modal').style.display !== 'flex') openPlayer(id); }); },
@@ -1223,6 +1225,7 @@ const C = {
   txt: el => { App.filt.txt = el.value; render(); },
   txo: el => { App.sort.txn = el.value; render(); },
   stLvl: el => { App.tab.standings = el.value; render(); },
+  hubSort: el => { App.sort[el.dataset.k] = el.value; render(); },
   farole: el => { App.filt.farole = el.value; render(); },
   scFilt: el => { App.filt.screg = el.value; render(); },
   staffTeam: el => { App.staffT = +el.value; render(); },
@@ -1386,43 +1389,97 @@ function V_allstar() {
 function V_hub() {
   const st = App.st, my = myTid();
   if (my == null) return '<div class="card">Claim a team to use the Trade Hub.</div>';
-  const tab = App.tab.hub || 'rumors'; const me = T(my);
-  const tabs = [['rumors', 'Rumors'], ['report', 'Team Reports'], ['block', `Trade Block (${(me.block || []).length})`], ['targets', `Target List (${(me.tgt || []).length})`], ['unt', 'Untouchables']];
-  let body = '';
-  const pline = p => `${plink(p)} <span class="muted sm">${p.p} · ${p.a}y · ${LVN[p.lv]} · ${money(p.sal)}×${p.y}</span>`;
-  const stratTag = s => `<span class="tag ${s === 'Contender' ? 'gold' : s === 'Rebuilding' ? 'bad' : ''}">${s}</span>`;
-  if (tab === 'rumors') {
-    body = `<section class="card"><ul class="news">${(st.rumors || []).map(r => `<li><small>${r.s} · ${r.d != null ? F.dayLabel(st, r.d) : phaseName(r.ph)}</small>${r.tid != null ? tb(r.tid) + ' ' : ''}${esc(r.t)}${r.pid != null && PL(r.pid) && PL(r.pid).tid !== my ? ` <a class="pl" data-act="hubTarget" data-id="${r.pid}">→ make an offer</a>` : ''}</li>`).join('') || '<li class="muted">Quiet out there. Rumors pick up as the season goes on.</li>'}</ul></section>`;
-  } else if (tab === 'report') {
-    const tid = App.hubT != null ? App.hubT : st.teams.find(t => t.id !== my).id; const t = T(tid);
-    const strat = F.strategy(st, t), needs = F.teamNeeds(st, t), unt = F.untouchables(st, t);
-    const want = strat === 'Contender' ? 'Proven big-league talent who can help now. Will pay with prospects.' : strat === 'Rebuilding' ? 'Young players and high-potential prospects. Willing to move veterans and big contracts.' : 'Value deals that fill a hole without giving up core pieces.';
-    const shop = F.teamPlayers(st, tid).filter(p => !unt.includes(p.id) && p.lv === 0 && (strat === 'Rebuilding' ? p.a >= 28 : strat === 'Middle' ? p.y <= 1 : false) && p.o >= 65).sort((a, b) => b.o - a.o).slice(0, 6);
-    body = `<div class="pagehead"><h3>${tb(tid, true)} ${esc(F.tname(t))} ${stratTag(strat)}</h3><select data-chg="hubTeam">${st.teams.filter(x => x.id !== my).map(x => `<option value="${x.id}"${x.id === tid ? ' selected' : ''}>${x.ab} — ${esc(F.tname(x))}</option>`).join('')}</select></div>
-    <div class="kpis small"><div><small>Record</small><b>${rec(t)}</b></div><div><small>Team OVR</small><b>${Math.round(F.teamStrength(st, t))}</b></div><div><small>Payroll room</small><b>${money(t.bud - F.payroll(st, tid))}</b></div><div><small>Your scouting</small><b>${F.proKnown(st, my, tid)}%</b></div></div>
-    <div class="grid2"><section class="card"><h3>What they're looking for</h3><p>${want}</p><h3>Needs</h3><table class="t">${needs.map(n => `<tr><td><b>${n.pos}</b></td><td class="l">${n.who ? plink(PL(n.who), true) : n.pos === 'SP' ? 'Rotation' : 'Bullpen'}</td><td class="${n.gap <= -3 ? 'bad' : n.gap >= 3 ? 'good' : 'muted'}">${n.gap > 0 ? '+' : ''}${n.gap} vs avg</td><td>${n.gap <= -3 ? '<span class="tag bad">Need</span>' : n.gap >= 4 ? '<span class="tag">Strength</span>' : ''}</td></tr>`).join('')}</table></section>
-    <section class="card"><h3>Untouchable</h3>${unt.map(id => `<div>${pline(PL(id))}</div>`).join('') || '<p class="muted">Nobody.</p>'}<h3 style="margin-top:12px">Likely available</h3>${shop.map(p => `<div class="row">${pline(p)} <button class="mini" data-act="hubTarget" data-id="${p.id}">Offer</button><button class="mini ghost" data-act="lst" data-k="tgt" data-id="${p.id}">+ Target</button></div>`).join('') || '<p class="muted">They aren\'t actively shopping anyone.</p>'}</section></div>`;
-  } else if (tab === 'block') {
-    const ids = (me.block || []).filter(id => PL(id) && PL(id).tid === my);
-    body = ids.length ? ids.map(id => { const p = PL(id); const ints = F.blockInterest(st, id, my);
-      return `<section class="card"><div class="row" style="justify-content:space-between">${pline(p)} <span><b class="ov ${rc(p.o)}">${p.o}</b> value ${F.pval(p)}</span><button class="mini ghost" data-act="lst" data-k="block" data-id="${id}">Remove</button></div>
-      ${ints.length ? `<table class="t"><tr><th class="l">Interested team</th><th>Approach</th><th class="l">Their offer</th><th></th></tr>${ints.map(o => `<tr><td class="l">${tb(o.tid)} ${esc(T(o.tid).name)}</td><td>${stratTag(o.strat)}</td><td class="l">${o.offer.map(x => plink(PL(x), true) + ` <span class="muted sm">${PL(x).p} ${PL(x).o}</span>`).join(', ')}</td><td><button class="mini" data-act="loadOffer" data-o='${esc(JSON.stringify({ tid: o.tid, pid: id, offer: o.offer }))}'>Load in Trade Center</button></td></tr>`).join('')}</table>` : '<p class="muted">No serious interest right now.</p>'}</section>`; }).join('')
-      : '<div class="card muted">Your trade block is empty. Open any of your players and choose “+ Trade block” to see which teams are interested and what they would offer.</div>';
-  } else if (tab === 'targets') {
-    const ids = (me.tgt || []).filter(id => PL(id));
-    body = ids.length ? `<div class="card flush"><table class="t"><tr><th class="l">Player</th><th>OVR</th><th>POT</th><th>Team</th><th>Stance</th><th>Value</th><th></th></tr>${ids.map(id => { const p = PL(id); const t = p.tid >= 0 ? T(p.tid) : null; const strat = t ? F.strategy(st, t) : ''; const unt = t && F.untouchables(st, t).includes(id);
-      const stance = !t ? 'Free agent' : p.tid === my ? 'On your team' : unt ? '<span class="bad">Untouchable</span>' : strat === 'Rebuilding' && p.a >= 27 ? '<span class="good">Available</span>' : strat === 'Contender' ? '<span class="warn">Core piece</span>' : 'Listening';
-      return `<tr><td class="l">${pline(p)}</td><td><span class="ov ${rc(p.o)}">${p.o}</span></td><td>${potTag(p)}</td><td>${t ? tb(t.id) : ''}</td><td>${stance}</td><td>${F.pval(p)}</td><td>${t && p.tid !== my ? `<button class="mini" data-act="hubTarget" data-id="${id}">Make offer</button>` : ''}<button class="mini ghost" data-act="lst" data-k="tgt" data-id="${id}">✕</button></td></tr>`; }).join('')}</table></div>`
-      : '<div class="card muted">No targets yet. Open a player on another team and choose “+ Target list” to track him here.</div>';
-  } else if (tab === 'unt') {
-    const ids = (me.unt || []).filter(id => PL(id) && PL(id).tid === my);
-    body = `<section class="card"><h3>Your untouchables (${ids.length}/5)</h3><p class="muted sm">Other managers see these as off-limits. Mark players from their player card.</p>${ids.map(id => `<div class="row">${pline(PL(id))}<button class="mini ghost" data-act="lst" data-k="unt" data-id="${id}">Remove</button></div>`).join('') || '<p class="muted">None.</p>'}</section>
-    <section class="card flush"><h3 class="pad">Around the league</h3><table class="t"><tr><th class="l">Team</th><th>Approach</th><th class="l">Untouchable players</th></tr>${st.teams.filter(t => t.id !== my).map(t => `<tr><td class="l">${tb(t.id)} ${esc(t.name)}</td><td>${stratTag(F.strategy(st, t))}</td><td class="l sm">${F.untouchables(st, t).map(id => plink(PL(id), true)).join(', ') || '—'}</td></tr>`).join('')}</table></section>`;
-  }
+  const me = T(my); const tab = App.tab.hub || 'rumors';
   const myS = F.strategy(st, me), myNeeds = F.needList(st, me);
-  return `<div class="pagehead"><h2>Trade Hub</h2><button class="btn" data-act="nav" data-v="trades">Open Trade Center</button></div>
-  <div class="kpis small"><div><small>Your approach</small><b>${myS}</b></div><div><small>Your needs</small><b>${myNeeds.join(', ') || 'None'}</b></div><div><small>Trade deadline</small><b>${F.tradesOpen(st) ? F.dayLabel(st, F.deadlineDay(st)) : 'Closed'}</b></div></div>
-  <div class="tabs">${tabs.map(([k, l]) => `<a class="${tab === k ? 'on' : ''}" data-act="tab" data-g="hub" data-v="${k}">${l}</a>`).join('')}</div>${body}`;
+  const stratTag = s => `<span class="stag s-${s}">${s === 'Contender' ? '🏆 ' : s === 'Rebuilding' ? '🔧 ' : '⚖️ '}${s}</span>`;
+  const pmini = p => `<span class="pmini"><b>${p.p}</b> <span class="ov ${rc(p.o)}">${p.o}</span> <span class="muted">${p.a}y · ${money(p.sal)}×${p.y}</span></span>`;
+  const fits = p => myNeeds.some(n => n === p.p || (['LF', 'CF', 'RF'].includes(n) && ['LF', 'CF', 'RF'].includes(p.p)) || (n === 'DH' && !F.isP(p)));
+  const acts = p => p.tid !== my && p.tid >= 0 ? `<button class="mini" data-act="hubTarget" data-id="${p.id}">Make offer</button><button class="mini ghost${(me.tgt || []).includes(p.id) ? ' on' : ''}" data-act="lst" data-k="tgt" data-id="${p.id}">${(me.tgt || []).includes(p.id) ? '✓ Target' : '+ Target'}</button>` : '';
+  const chipRow = (key, opts, cur) => `<div class="chips fchips">${opts.map(([v, l]) => `<button class="chip${cur === v ? ' on' : ''}" data-act="hubF" data-k="${key}" data-v="${v}">${l}</button>`).join('')}</div>`;
+  const dl = F.deadlineDay(st), left = dl - st.day;
+  const rumors = st.rumors || [];
+  const block = (me.block || []).filter(id => PL(id) && PL(id).tid === my), tgts = (me.tgt || []).filter(id => PL(id));
+  const summary = `<div class="hubsum">
+    <div class="hs"><small>Your approach</small>${stratTag(myS)}</div>
+    <div class="hs"><small>Your needs</small><div>${myNeeds.length ? myNeeds.map(n => `<span class="tag bad">${n}</span>`).join(' ') : '<span class="good sm">No glaring holes</span>'}</div></div>
+    <div class="hs"><small>Trade deadline</small><b>${!F.tradesOpen(st) ? '<span class="bad">Closed</span>' : st.phase === 'regular' ? `${F.dayLabel(st, dl)} <span class="muted sm">· ${left} day${left === 1 ? '' : 's'} left</span>` : 'Offseason — open'}</b></div>
+    <div class="hs"><small>Your activity</small><b>${block.length} on block · ${tgts.length} targets</b></div></div>`;
+  const tabs = [['rumors', '📰 Rumors', rumors.length], ['market', '🛒 Market', null], ['teams', '🏟️ Team Reports', null], ['block', '📦 Trade Block', block.length], ['targets', '🎯 Targets', tgts.length], ['unt', '🔒 Untouchables', null]];
+  let body = '';
+  if (tab === 'rumors') {
+    const kf = App.filt.hrk || 'all', mineOnly = App.filt.hrm === 'mine';
+    const kind = r => r.k || (/listening/.test(r.t) ? 'sell' : /checked in/.test(r.t) ? 'interest' : /extension/.test(r.t) ? 'ext' : 'need');
+    const KN = { sell: ['💰', 'Selling', '#e0873a'], interest: ['👀', 'Interest', '#5aa9e6'], need: ['🔎', 'Shopping for', '#9b8cf0'], ext: ['✍️', 'Extension talks', '#4cc38a'] };
+    let list = rumors.filter(r => kf === 'all' || kind(r) === kf);
+    if (mineOnly) list = list.filter(r => r.tid === my || r.t2 === my || (r.pid != null && (PL(r.pid) || {}).tid === my) || (r.pid != null && tgts.includes(r.pid)));
+    body = `<div class="hubtools">${chipRow('hrk', [['all', 'All'], ['sell', '💰 Selling'], ['interest', '👀 Interest'], ['need', '🔎 Needs'], ['ext', '✍️ Extensions']], kf)}${chipRow('hrm', [['all', 'Whole league'], ['mine', 'My team & targets']], mineOnly ? 'mine' : 'all')}</div>
+    <div class="rgrid">${list.map(r => { const k = KN[kind(r)]; const p = r.pid != null ? PL(r.pid) : null;
+      return `<div class="rcard" style="--c:${k[2]}"><div class="rh"><span class="rk">${k[0]} ${k[1]}</span><span class="muted sm">${r.s} · ${r.d != null ? F.dayLabel(st, r.d) : phaseName(r.ph)}</span></div>
+      <div class="rt">${r.tid != null ? tb(r.tid) : ''}${r.t2 != null ? ' → ' + tb(r.t2) : ''} ${esc(r.t)}</div>${p ? `<div class="rp">${plink(p)} ${pmini(p)} ${fits(p) && p.tid !== my ? '<span class="tag good">Fits your need</span>' : ''}<span class="ra">${acts(p)}</span></div>` : ''}</div>`; }).join('') || '<div class="card muted">No rumors match. They pick up as the season goes on.</div>'}</div>`;
+  } else if (tab === 'market') {
+    const pf = App.filt.hmp || 'all', sk = App.sort.hm || 'ovr', needOnly = App.filt.hmn === 'need';
+    let list = F.marketPlayers(st);
+    const grp = p => F.isP(p) ? p.p : ['LF', 'CF', 'RF'].includes(p.p) ? 'OF' : ['1B', '2B', '3B', 'SS'].includes(p.p) ? 'IF' : p.p;
+    if (pf !== 'all') list = list.filter(o => grp(o.p) === pf);
+    if (needOnly) list = list.filter(o => fits(o.p));
+    const key = { ovr: o => o.p.o, age: o => -o.p.a, val: o => F.pval(o.p), sal: o => -o.p.sal, pot: o => o.p.pt }[sk];
+    list.sort((a, b) => key(b) - key(a));
+    body = `<div class="hubtools">${chipRow('hmp', [['all', 'All'], ['C', 'C'], ['IF', 'Infield'], ['OF', 'Outfield'], ['DH', 'DH'], ['SP', 'SP'], ['RP', 'RP']], pf)}${chipRow('hmn', [['all', 'Everyone'], ['need', 'Fits my needs']], needOnly ? 'need' : 'all')}
+    <label class="chk">Sort <select data-chg="hubSort" data-k="hm">${[['ovr', 'Overall'], ['pot', 'Potential'], ['val', 'Trade value'], ['age', 'Youngest'], ['sal', 'Cheapest']].map(o => `<option value="${o[0]}"${sk === o[0] ? ' selected' : ''}>${o[1]}</option>`).join('')}</select></label></div>
+    <p class="muted sm">Players AI clubs are most willing to move right now: veterans on rebuilding teams, expiring deals and big contracts.</p>
+    <div class="card flush scroll tall"><table class="t"><tr><th class="l">Player</th><th>Pos</th><th>Age</th><th>OVR</th><th>POT</th><th>Contract</th><th>Value</th><th>Team</th><th>Why available</th><th></th></tr>${list.slice(0, 200).map(o => { const p = o.p;
+      return `<tr><td class="l">${plink(p)} ${fits(p) ? '<span class="tag good">Need</span>' : ''}</td><td><b>${p.p}</b></td><td>${p.a}</td><td><span class="ov ${rc(p.o)}">${p.o}</span></td><td>${potTag(p)}</td><td>${money(p.sal)}×${p.y}</td><td>${F.pval(p)}</td><td>${tb(p.tid)} ${stratTag(o.strat)}</td><td class="sm">${o.why}</td><td class="nw">${acts(p)}</td></tr>`; }).join('') || '<tr><td colspan=10 class="muted">No players match.</td></tr>'}</table></div>`;
+  } else if (tab === 'teams') {
+    const sf = App.filt.hts || 'all', sk = App.sort.ht || 'rec';
+    let teams = st.teams.filter(t => t.id !== my).map(t => ({ t, s: F.strategy(st, t), needs: F.needList(st, t), str: F.teamStrength(st, t), room: t.bud - F.payroll(st, t.id) }));
+    if (sf !== 'all') teams = teams.filter(o => o.s === sf);
+    const key = { rec: o => F.pct(o.t), ovr: o => o.str, room: o => o.room, needs: o => o.needs.length, name: o => -o.t.ab.charCodeAt(0) }[sk];
+    teams.sort((a, b) => key(b) - key(a));
+    const sel = App.hubT != null && App.hubT !== my ? App.hubT : null;
+    body = `<div class="hubtools">${chipRow('hts', [['all', 'All teams'], ['Contender', '🏆 Contenders'], ['Middle', '⚖️ Middle'], ['Rebuilding', '🔧 Rebuilding']], sf)}
+    <label class="chk">Sort <select data-chg="hubSort" data-k="ht">${[['rec', 'Record'], ['ovr', 'Team overall'], ['room', 'Payroll room'], ['needs', 'Most needs']].map(o => `<option value="${o[0]}"${sk === o[0] ? ' selected' : ''}>${o[1]}</option>`).join('')}</select></label></div>
+    ${sel != null ? teamReport(sel, stratTag, pmini, acts) : '<p class="muted sm">Click a team for its full report.</p>'}
+    <div class="tgrid">${teams.map(o => `<a class="tcard${sel === o.t.id ? ' on' : ''}" data-act="hubTeamPick" data-id="${o.t.id}" style="--c:${o.t.col}"><div class="th">${tb(o.t.id, true)}<div><b>${esc(o.t.name || o.t.city)}</b><span class="muted sm">${rec(o.t)} · OVR ${Math.round(o.str)}</span></div></div>
+      ${stratTag(o.s)}<div class="tn">${o.needs.length ? o.needs.slice(0, 4).map(n => `<span class="tag bad">${n}</span>`).join(' ') : '<span class="muted sm">No needs</span>'}</div><div class="muted sm">Room ${money(o.room)}</div></a>`).join('')}</div>`;
+  } else if (tab === 'block') {
+    const ids = block.slice().sort((a, b) => F.pval(PL(b)) - F.pval(PL(a)));
+    body = ids.length ? `<div class="bgrid">${ids.map(id => { const p = PL(id); const ints = F.blockInterest(st, id, my); const pv = F.pval(p);
+      return `<section class="card bcard"><div class="bh">${plink(p)} ${pmini(p)}<span class="muted sm">Value ${pv}</span><button class="mini ghost" data-act="lst" data-k="block" data-id="${id}">Remove</button></div>
+      ${ints.length ? ints.map(o => { const tot = Math.round(o.offer.reduce((s, x) => s + F.pval(PL(x)), 0) * 10) / 10; const pct = Math.round(tot / Math.max(0.1, pv) * 100);
+        return `<div class="offerrow"><div class="ot">${tb(o.tid)} <b>${esc(T(o.tid).name || T(o.tid).city)}</b> ${stratTag(o.strat)}</div><div class="oo">${o.offer.map(x => `${plink(PL(x), true)} <span class="muted sm">${PL(x).p} ${PL(x).o}</span>`).join(', ')}</div><div class="ov2"><span class="${pct >= 95 ? 'good' : pct >= 80 ? 'warn' : 'bad'}">${pct}% value</span></div><button class="mini" data-act="loadOffer" data-o='${esc(JSON.stringify({ tid: o.tid, pid: id, offer: o.offer }))}'>Load in Trade Center</button></div>`; }).join('') : '<p class="muted sm">No serious interest right now.</p>'}</section>`; }).join('')}</div>`
+      : '<div class="card muted">Your trade block is empty. Open one of your players and choose “+ Trade block” to see which teams want him and what they would offer.</div>';
+  } else if (tab === 'targets') {
+    const sk = App.sort.htg || 'ovr', sf = App.filt.htg || 'all';
+    const stanceOf = p => { const t = p.tid >= 0 ? T(p.tid) : null; if (!t) return ['fa', 'Free agent']; if (p.tid === my) return ['mine', 'On your team']; if (F.untouchables(st, t).includes(p.id)) return ['no', 'Untouchable']; const s = F.strategy(st, t); return s === 'Rebuilding' && p.a >= 27 ? ['yes', 'Available'] : s === 'Contender' ? ['hard', 'Core piece'] : ['maybe', 'Listening']; };
+    let list = tgts.map(id => PL(id));
+    if (sf !== 'all') list = list.filter(p => stanceOf(p)[0] === sf);
+    const key = { ovr: p => p.o, val: p => F.pval(p), age: p => -p.a, sal: p => -p.sal }[sk]; list.sort((a, b) => key(b) - key(a));
+    const SC = { yes: 'good', maybe: 'warn', hard: 'warn', no: 'bad', fa: 'muted', mine: 'muted' };
+    body = tgts.length ? `<div class="hubtools">${chipRow('htg', [['all', 'All'], ['yes', 'Available'], ['maybe', 'Listening'], ['hard', 'Core piece'], ['no', 'Untouchable']], sf)}<label class="chk">Sort <select data-chg="hubSort" data-k="htg">${[['ovr', 'Overall'], ['val', 'Trade value'], ['age', 'Youngest'], ['sal', 'Cheapest']].map(o => `<option value="${o[0]}"${sk === o[0] ? ' selected' : ''}>${o[1]}</option>`).join('')}</select></label></div>
+      <div class="card flush scroll"><table class="t"><tr><th class="l">Player</th><th>Pos</th><th>Age</th><th>OVR</th><th>POT</th><th>Contract</th><th>Value</th><th>Team</th><th>Stance</th><th></th></tr>${list.map(p => { const s = stanceOf(p);
+        return `<tr><td class="l">${plink(p)} ${fits(p) ? '<span class="tag good">Need</span>' : ''}</td><td><b>${p.p}</b></td><td>${p.a}</td><td><span class="ov ${rc(p.o)}">${p.o}</span></td><td>${potTag(p)}</td><td>${money(p.sal)}×${p.y}</td><td>${F.pval(p)}</td><td>${p.tid >= 0 ? tb(p.tid) : 'FA'}</td><td class="${SC[s[0]]}">${s[1]}</td><td class="nw">${p.tid >= 0 && p.tid !== my ? `<button class="mini" data-act="hubTarget" data-id="${p.id}">Make offer</button>` : ''}<button class="mini ghost" data-act="lst" data-k="tgt" data-id="${p.id}">✕</button></td></tr>`; }).join('') || '<tr><td colspan=10 class="muted">No targets match.</td></tr>'}</table></div>`
+      : '<div class="card muted">No targets yet. Use “+ Target” on any player in Rumors, Market or Team Reports to track him here.</div>';
+  } else if (tab === 'unt') {
+    const ids = (me.unt || []).filter(id => PL(id) && PL(id).tid === my); const sf = App.filt.hus || 'all';
+    let teams = st.teams.filter(t => t.id !== my).map(t => ({ t, s: F.strategy(st, t) })); if (sf !== 'all') teams = teams.filter(o => o.s === sf);
+    body = `<section class="card"><h3>Your untouchables (${ids.length}/5)</h3><p class="muted sm">Mark players from their player card. AI teams ask for far more for their own untouchables.</p><div class="chips">${ids.map(id => `<span class="chipb">${plink(PL(id))} ${pmini(PL(id))}<button class="mini ghost" data-act="lst" data-k="unt" data-id="${id}">✕</button></span>`).join('') || '<span class="muted">None.</span>'}</div></section>
+    <div class="hubtools">${chipRow('hus', [['all', 'All teams'], ['Contender', '🏆 Contenders'], ['Middle', '⚖️ Middle'], ['Rebuilding', '🔧 Rebuilding']], sf)}</div>
+    <div class="ugrid">${teams.map(o => `<div class="ucard" style="--c:${o.t.col}"><div class="th">${tb(o.t.id)} <b>${esc(o.t.name || o.t.city)}</b> ${stratTag(o.s)}</div>${F.untouchables(st, o.t).map(id => `<div class="sm">${plink(PL(id), true)} ${pmini(PL(id))}</div>`).join('') || '<div class="muted sm">—</div>'}</div>`).join('')}</div>`;
+  }
+  return `<div class="pagehead"><h2>Trade Hub</h2><button class="btn primary" data-act="nav" data-v="trades">Open Trade Center</button></div>${summary}
+  <div class="tabs">${tabs.map(([k, l, n]) => `<a class="${tab === k ? 'on' : ''}" data-act="tab" data-g="hub" data-v="${k}">${l}${n ? ` <span class="cnt">${n}</span>` : ''}</a>`).join('')}</div>${body}`;
+}
+function teamReport(tid, stratTag, pmini, acts) {
+  const st = App.st, t = T(tid), my = myTid();
+  const strat = F.strategy(st, t), needs = F.teamNeeds(st, t), unt = F.untouchables(st, t);
+  const want = strat === 'Contender' ? 'Proven big-league talent who can help now. Will pay with prospects.' : strat === 'Rebuilding' ? 'Young players and high-potential prospects. Willing to move veterans and big contracts.' : 'Value deals that fill a hole without giving up core pieces.';
+  const shop = F.marketPlayers(st).filter(o => o.t.id === tid).sort((a, b) => b.p.o - a.p.o).slice(0, 8);
+  return `<section class="card hi treport"><div class="pagehead"><h3>${tb(tid, true)} ${esc(F.tname(t))} ${stratTag(strat)}</h3><button class="mini ghost" data-act="hubTeamPick" data-id="">Close ✕</button></div>
+  <div class="kpis small"><div><small>Record</small><b>${rec(t)}</b></div><div><small>Team OVR</small><b>${Math.round(F.teamStrength(st, t))}</b></div><div><small>Payroll room</small><b>${money(t.bud - F.payroll(st, tid))}</b></div><div><small>Your scouting</small><b>${F.proKnown(st, my, tid)}%</b></div></div>
+  <p><b>Looking for:</b> ${want}</p>
+  <div class="grid2"><div><h4>Position by position</h4><div class="needbars">${needs.map(n => { const w = Math.min(50, Math.abs(n.gap) * 4); return `<div class="nb"><b>${n.pos}</b><span class="nbw">${n.gap < 0 ? `<i class="neg" style="width:${w}%"></i>` : ''}<i class="mid"></i>${n.gap > 0 ? `<i class="pos" style="width:${w}%"></i>` : ''}</span><span class="${n.gap <= -3 ? 'bad' : n.gap >= 3 ? 'good' : 'muted'} sm">${n.gap > 0 ? '+' : ''}${n.gap}</span><span class="sm">${n.who && PL(n.who) ? plink(PL(n.who), true) : n.pos === 'SP' ? 'Rotation' : 'Bullpen'}</span></div>`; }).join('')}</div><p class="muted sm">Compared with the league-average starter at each spot. Red = need, green = strength.</p></div>
+  <div><h4>🔒 Untouchable</h4>${unt.map(id => `<div class="sm">${plink(PL(id))} ${pmini(PL(id))}</div>`).join('') || '<p class="muted">Nobody.</p>'}
+  <h4 style="margin-top:12px">🛒 Likely available</h4>${shop.map(o => `<div class="avrow">${plink(o.p)} ${pmini(o.p)} <span class="muted sm">${o.why}</span><span class="ra">${acts(o.p)}</span></div>`).join('') || '<p class="muted">They aren\'t actively shopping anyone.</p>'}</div></div></section>`;
 }
 
 /* ---------------- GOAT METER ---------------- */

@@ -255,6 +255,28 @@ a.pl{transition:color .12s}
 .fams{display:grid;grid-template-columns:1fr;gap:4px}.fam{display:grid;grid-template-columns:34px 1fr 54px 30px auto;gap:8px;align-items:center;font-size:13px}
 .fam i{height:7px;background:#0f1a23;border-radius:5px;overflow:hidden;display:block}.fam i em{display:block;height:100%;background:linear-gradient(90deg,#5aa9e6,#4cc38a)}
 .fam.pri b{color:var(--acc2)}.fam.pri i em{background:var(--acc)}.fam.tr{background:#1d2a36;border-radius:6px}.fam .fbtns{display:flex;gap:3px}
+/* trade hub */
+.hubsum{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:10px}
+.hs{background:#0f1a23;border:1px solid var(--line);border-radius:10px;padding:9px 12px;display:flex;flex-direction:column;gap:4px}.hs small{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.6px}
+.stag{display:inline-block;font-size:12px;font-weight:700;padding:1px 8px;border-radius:12px;white-space:nowrap;background:#2b3a48;color:#dfe7ef}.stag.s-Contender{background:#3d3218;color:var(--acc2)}.stag.s-Rebuilding{background:#3d1d20;color:#ffb3b0}.stag.s-Middle{background:#1d3557;color:#bcd6ff}
+.tabs .cnt{display:inline-block;min-width:18px;padding:0 5px;border-radius:9px;background:#2b3a48;font-size:11px;text-align:center;margin-left:3px}
+.hubtools{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin:4px 0 10px}
+.fchips .chip{font-family:Barlow,sans-serif;font-weight:600;font-size:12px;color:#b9c6d2}.fchips .chip.on{background:var(--acc);color:#1b1206;border-color:var(--acc)}
+.pmini{display:inline-flex;gap:5px;align-items:center;font-size:12px}.pmini .ov{font-size:12px;padding:0 4px}
+.rgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:10px}
+.rcard{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--c);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.rcard .rh{display:flex;justify-content:space-between;gap:8px}.rcard .rk{font-size:12px;font-weight:700;color:var(--c)}.rcard .rt{font-size:14px}
+.rcard .rp,.avrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px;padding-top:6px;border-top:1px solid #1d2a36}.ra{margin-left:auto;display:flex;gap:4px}
+.tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.tcard{background:var(--panel);border:1px solid var(--line);border-top:3px solid var(--c);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:6px;cursor:pointer;text-decoration:none;transition:transform .12s,border-color .15s}
+.tcard:hover{transform:translateY(-2px);border-color:#3a5166}.tcard.on{box-shadow:0 0 0 2px var(--acc)}
+.tcard .th,.ucard .th{display:flex;gap:8px;align-items:center}.tcard .th>div{display:flex;flex-direction:column;line-height:1.2}.tcard .tn{display:flex;flex-wrap:wrap;gap:3px}
+.needbars{display:flex;flex-direction:column;gap:4px}.nb{display:grid;grid-template-columns:34px 1fr 36px 1fr;gap:8px;align-items:center}
+.nbw{display:flex;height:8px;background:#0f1a23;border-radius:5px;overflow:hidden;position:relative;justify-content:center}.nbw i{display:block;height:100%}.nbw i.neg{background:var(--bad);margin-left:auto}.nbw i.pos{background:var(--good)}.nbw i.mid{width:2px;background:#3a5166}
+.bgrid{display:grid;grid-template-columns:1fr;gap:10px}.bcard .bh{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px}.bcard .bh .mini{margin-left:auto}
+.offerrow{display:grid;grid-template-columns:minmax(160px,auto) 1fr auto auto;gap:10px;align-items:center;padding:8px 0;border-top:1px solid #1d2a36}.offerrow .ot{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.ugrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}.ucard{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--c);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:4px}
+@media (max-width:900px){.offerrow{grid-template-columns:1fr}.rgrid{grid-template-columns:1fr}}
 /* invite */
 .invite{margin-top:12px;padding:10px 12px;border:1px dashed #6b5428;border-radius:10px;background:#1f1a12}.invite .row{margin:6px 0}.invite input{flex:1;min-width:220px;font-size:12px}
 /* inbox */

@@ -517,30 +517,46 @@ F.makeOffer = (st, aiTid, pid) => {
   }
   return tot >= target * 0.75 ? pickd : [];
 };
-function rumorAdd(st, text, tid, pid) { st.rumors = st.rumors || []; st.rumors.unshift({ s: st.season, d: st.phase === 'regular' ? st.day : null, ph: st.phase, t: text, tid, pid }); if (st.rumors.length > 50) st.rumors.length = 50; }
+function rumorAdd(st, text, tid, pid, k, tid2) { st.rumors = st.rumors || []; st.rumors.unshift({ s: st.season, d: st.phase === 'regular' ? st.day : null, ph: st.phase, t: text, tid, pid, k: k || 'need', t2: tid2 }); if (st.rumors.length > 50) st.rumors.length = 50; }
 function genRumors(st, n) {
   for (let i = 0; i < n; i++) {
     const t = pick(st.teams); const strat = F.strategy(st, t);
     const x = rnd();
     if (strat === 'Rebuilding' && x < 0.5) {
       const u = new Set(F.untouchables(st, t)); const v = teamPlayers(st, t.id).filter(p => p.lv === 0 && !u.has(p.id) && p.a >= 28 && p.o >= 70).sort((a, b) => b.o - a.o)[0];
-      if (v) rumorAdd(st, `The ${t.name} are listening to offers on ${v.p} ${pname(v)} (${v.o} OVR, age ${v.a}).`, t.id, v.id);
+      if (v) rumorAdd(st, `The ${t.name} are listening to offers on ${v.p} ${pname(v)} (${v.o} OVR, age ${v.a}).`, t.id, v.id, 'sell');
     } else if (strat === 'Contender' && x < 0.7) {
       const needs = F.needList(st, t); if (!needs.length) continue;
       const need = pick(needs);
       const sellers = st.teams.filter(s => s.id !== t.id && F.strategy(st, s) !== 'Contender');
       const cands = sellers.flatMap(s => { const u = new Set(F.untouchables(st, s)); return teamPlayers(st, s.id).filter(p => p.lv === 0 && !u.has(p.id) && posFits(p, [need]) && p.o >= 70); }).sort((a, b) => b.o - a.o).slice(0, 8);
       const c = cands.length ? pick(cands) : null;
-      if (c) rumorAdd(st, `Sources: the ${t.name} have checked in with the ${st.teams[c.tid].name} about ${pname(c)} to address their ${need} need.`, t.id, c.id);
-      else rumorAdd(st, `The ${t.name} are in the market for ${need === 'SP' ? 'starting pitching' : need === 'RP' ? 'bullpen help' : 'help at ' + need}.`, t.id);
+      if (c) rumorAdd(st, `Sources: the ${t.name} have checked in with the ${st.teams[c.tid].name} about ${pname(c)} to address their ${need} need.`, t.id, c.id, 'interest', c.tid);
+      else rumorAdd(st, `The ${t.name} are in the market for ${need === 'SP' ? 'starting pitching' : need === 'RP' ? 'bullpen help' : 'help at ' + need}.`, t.id, null, 'need');
     } else if (x < 0.85) {
       const y = teamPlayers(st, t.id).filter(p => p.lv === 0 && p.a <= 26 && p.o >= 78 && p.y <= 2).sort((a, b) => b.o - a.o)[0];
-      if (y) rumorAdd(st, `The ${t.name} have opened contract extension talks with ${pname(y)}.`, t.id, y.id);
+      if (y) rumorAdd(st, `The ${t.name} have opened contract extension talks with ${pname(y)}.`, t.id, y.id, 'ext');
     } else {
-      const needs = F.needList(st, t); if (needs.length) rumorAdd(st, `Front-office chatter: the ${t.name} (${strat.toLowerCase()}) want upgrades at ${needs.slice(0, 2).join(' and ')}.`, t.id);
+      const needs = F.needList(st, t); if (needs.length) rumorAdd(st, `Front-office chatter: the ${t.name} (${strat.toLowerCase()}) want upgrades at ${needs.slice(0, 2).join(' and ')}.`, t.id, null, 'need');
     }
   }
 }
+F.marketPlayers = st => {
+  const out = [];
+  for (const t of st.teams) {
+    if (t.user != null) continue;
+    const strat = F.strategy(st, t); const unt = new Set(F.untouchables(st, t));
+    for (const p of teamPlayers(st, t.id)) {
+      if (unt.has(p.id) || p.lv !== 0 || p.o < 62) continue;
+      let why = null;
+      if (strat === 'Rebuilding' && p.a >= 27) why = 'Rebuilding club';
+      else if (p.y <= 1 && strat !== 'Contender') why = 'Expiring contract';
+      else if (strat !== 'Contender' && p.sal >= 15 && p.a >= 30) why = 'Big contract';
+      if (why) out.push({ p, t, strat, why });
+    }
+  }
+  return out;
+};
 F.toggleList = (st, tid, key, pid, max) => {
   const t = st.teams[tid]; t[key] = (t[key] || []).filter(id => st.players[id]); pid = +pid;
   if (t[key].includes(pid)) t[key] = t[key].filter(x => x !== pid);
