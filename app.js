@@ -136,7 +136,8 @@ function V_start() {
     (S.uid ? `<button class="btn primary" data-act="wizard" data-mode="shared">+ Create Multiplayer League</button>` : '<p class="muted sm">Sign in to create a league.</p>');
   return `<div class="start">
   <div class="hero"><div class="logo">FRONT OFFICE<small>BASEBALL FRANCHISE</small></div>
-  <p>Run a big-league club for as many seasons as you like: set lineups, manage games pitch by pitch, make trades, bid in free agency, scout the draft, and chase a title. Play solo or in a shared league with friends.</p></div>
+  <p>Run a big-league club for as many seasons as you like: set lineups, manage games pitch by pitch, make trades, bid in free agency, scout the draft, and chase a title. Play solo or in a shared league with friends.</p><button class="btn ghost sm" data-act="tutMenu">📘 Tutorial</button></div>
+  ${window.tutStartCard ? tutStartCard() : ''}
   <div class="grid2">
     <section class="card"><h2>Single Player</h2>${saveRows}<div class="row" style="margin-top:12px"><button class="btn primary" data-act="wizard" data-mode="local">+ New Franchise</button><button class="btn ghost" data-act="importOpen">Import save</button></div>
     <p class="muted sm" style="margin-top:10px">${S.hasCloud() ? 'Saves are stored privately in your account.' : 'Saves are kept in this browser. Use Export in Settings to back up.'}</p></section>
@@ -183,6 +184,7 @@ function render() {
   if (same && sc) { [...root.querySelectorAll('.scroll,.pbp,.tplist')].forEach((e, i) => { if (sc[i]) { e.scrollTop = sc[i][0]; e.scrollLeft = sc[i][1]; } }); if (Math.abs(window.scrollY - wy) > 2) window.scrollTo(0, wy); }
   else { const m = root.querySelector('main'); if (m) m.classList.add('enter'); }
   _lastView = key;
+  if (App.tut && window.tutAfterRender) tutAfterRender();
 }
 function _render(root) {
   if (!App.st) { root.innerHTML = V_start(); return; }
@@ -212,6 +214,7 @@ function shellTop() {
   <div class="lg"><b>${esc(st.name)}</b><span class="muted">${st.season} · ${esc(date)}</span></div>
   ${t ? `<div class="myteam">${tb(t.id, true)}<div><b>${esc(t.name)}</b><span class="muted">${rec(t)}${st.phase === 'regular' ? ' · ' + gbText(t) : ''}</span></div>${sw}</div>` : `<div class="myteam muted">Spectating</div>`}
   <div class="adv">${App.live ? '' : advControls()}</div>
+  <button class="btn ghost sm tutq" data-act="tutMenu" title="Tutorial / help">?</button>
   <div class="sv"><span id="savestate" class="muted sm">${App.mode === 'shared' ? 'Shared league' : ''}</span></div>
   </header>`;
 }
@@ -816,6 +819,7 @@ function V_settings() {
    ${App.mode === 'shared' ? `<label>Who can advance<select id="sAdv"${c ? '' : ' disabled'}>${[['commish', 'Commissioner only'], ['ready', 'Anyone, once all are ready'], ['any', 'Any manager']].map(o => `<option value="${o[0]}"${st.settings.advance === o[0] ? ' selected' : ''}>${o[1]}</option>`).join('')}</select></label>` : ''}
    <p class="muted sm">Season length (${st.settings.games} games) is fixed for this league.</p>
    ${c ? '<button class="btn primary" data-act="saveSettings">Save settings</button>' : '<p class="muted sm">Only the commissioner can change league settings.</p>'}</div></section>
+  <section class="card"><h3>Tutorial</h3><p class="muted sm">A quick tour of the site and the basics of baseball.</p><button class="btn" data-act="tutMenu">📘 Open tutorial</button></section>
   ${App.mode === 'local' ? `<section class="card"><h3>Controlled teams (couch co-op)</h3><p class="muted sm">Every ★ team is human-controlled. Use the switcher at the top to manage each one.</p>
    <div class="chips">${st.teams.map(t => `<button class="chip${t.user ? ' on' : ''}" data-act="toggleUser" data-id="${t.id}" style="--c:${t.col}">${t.ab}</button>`).join('')}</div></section>` :
       `<section class="card"><h3>Managers</h3><table class="t">${members().map(u => `<tr><td>${esc(uname(u))}</td><td>${tb(st.members[u])}</td><td>${c && u !== S.uid ? `<button class="mini ghost" data-act="kick" data-id="${esc(u)}">Remove</button>` : ''}${u === S.uid && u !== st.commish ? `<button class="mini ghost" data-act="leave">Leave league</button>` : ''}</td></tr>`).join('')}</table>
@@ -1091,7 +1095,7 @@ async function createFromWizard() {
       if (st.fd) st.fd.paused = true;
       const lid = await S.createShared(st);
       App.start.wizard = null; busy(false);
-      await openLeague(lid); return;
+      await openLeague(lid); if (window.tutOffer) tutOffer(); return;
     }
     w.teams.forEach(tid => { st.teams[tid].user = 'local'; });
     if (st.phase === 'fantasy') F.fdAuto(st);
@@ -1099,6 +1103,7 @@ async function createFromWizard() {
     await saveNow();
   } catch (e) { console.error(e); toast(esc(e.message || 'Could not create league.'), 'err'); }
   busy(false); render();
+  if (App.st && window.tutOffer) tutOffer();
 }
 
 /* ---------------- event handlers ---------------- */
@@ -1662,4 +1667,5 @@ window.__dbg = { openLeague, render, H, C, startLive, liveAction, liveSave, doSi
   if (m && S.db) { await openLeague(m[1]); if (App.st) { App.view = 'home'; render(); return; } }
   loadStart();
 })();
+window.FOB_UI = { App, H, render, modal, closeModal, toast };
 })();

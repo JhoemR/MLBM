@@ -322,6 +322,24 @@ a.pl{transition:color .12s}
 .toast{background:var(--panel2);border:1px solid var(--line);border-left:4px solid var(--blue);padding:10px 14px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.4);transition:opacity .5s}
 .toast.err{border-left-color:var(--bad)}.toast.good{border-left-color:var(--good)}.toast.out{opacity:0}
 @media (max-width:900px){.layout{grid-template-columns:1fr}nav.side{position:static;flex-direction:row;overflow:auto;border-right:0;border-bottom:1px solid var(--line)}nav.side a{white-space:nowrap}.grid2,.grid2.wide-left,.dash{grid-template-columns:1fr}.span2{grid-column:auto}.bracket{grid-template-columns:1fr 1fr}.lgrid,.mu{grid-template-columns:1fr}.adv{margin-left:0;width:100%}.logo{font-size:38px}main{padding:14px}.leaders{grid-template-columns:repeat(2,1fr)}}
+
+/* tutorial */
+#tut{position:fixed;right:18px;bottom:18px;width:400px;max-width:calc(100vw - 24px);max-height:min(72vh,620px);display:flex;flex-direction:column;background:var(--bg2);border:1px solid var(--acc);border-radius:14px;padding:14px 16px;z-index:45;box-shadow:0 18px 50px rgba(0,0,0,.55);animation:popup .2s ease both}
+#tut h3{margin:6px 0 6px;font-size:22px}
+.tuthead{display:flex;align-items:center;justify-content:space-between}.tuthead .x{position:static}
+.tutbar{height:4px;background:var(--line);border-radius:3px;overflow:hidden;margin-top:6px}.tutbar i{display:block;height:100%;background:var(--acc);transition:width .25s}
+.tutbody{overflow:auto;flex:1;line-height:1.5;font-size:14.5px}.tutbody p{margin:0 0 8px}.tutbody ul{margin:0 0 8px;padding-left:18px}.tutbody li{margin-bottom:4px}
+.tutnav{display:flex;gap:6px;align-items:center;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.tutfield{width:100%;max-width:240px;display:block;margin:4px auto 8px}
+.tutgl{width:100%;border-collapse:collapse;font-size:13.5px}.tutgl td{padding:5px 6px;border-bottom:1px solid var(--line);vertical-align:top}.tutgl td:first-child{white-space:nowrap;color:var(--acc2);width:1%}
+.tutopts{display:grid;gap:10px;margin-top:12px}.tutopt{display:flex;flex-direction:column;align-items:flex-start;gap:3px;text-align:left;padding:14px 16px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:inherit;cursor:pointer;font:inherit}
+.tutopt b{font-size:18px;font-family:'Barlow Condensed',Barlow,sans-serif}.tutopt span{color:#9fb0bf;font-size:13.5px}.tutopt:hover{border-color:var(--acc);background:var(--panel2)}
+.tutmenu{max-width:560px}
+.tutcard{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px;border-color:var(--acc)}
+.tutq{font-weight:800;min-width:32px}
+.tuthi{outline:2px solid var(--acc)!important;outline-offset:2px;border-radius:8px;animation:tutpulse 1.4s ease-in-out infinite}
+@keyframes tutpulse{50%{outline-color:transparent}}
+@media (max-width:900px){#tut{left:12px;right:12px;bottom:12px;width:auto;max-height:58vh}}
 </style>
 </head>
 <body>
@@ -342,5 +360,6 @@ a.pl{transition:color .12s}
 <script src="ext.js"></script>
 <script src="store.js"></script>
 <script src="app.js"></script>
+<script src="tutorial.js"></script>
 </body>
 </html>
