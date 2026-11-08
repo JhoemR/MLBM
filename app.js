@@ -858,7 +858,7 @@ function V_live() {
   const mineBat = g.half === L.side, mineDef = !mineBat;
   const b = g.bases;
   const rn = o => o ? esc(F.sname(st.players[o.id]).split(' ').slice(1).join(' ') || '') : '';
-  const dia = `<svg viewBox="0 0 120 100" class="dia"><path d="M60 92 L104 50 L60 8 L16 50 Z" class="grass"/><path d="M60 88 L100 50 L60 12 L20 50 Z" fill="none" stroke="currentColor" opacity=".35"/>${[[100, 50, b[0], 'end', -10, 18], [60, 12, b[1], 'middle', 0, -12], [20, 50, b[2], 'start', 10, 18]].map(([x, y, o, an, dx, dy]) => `<rect x="${x - 8}" y="${y - 8}" width="16" height="16" transform="rotate(45 ${x} ${y})" class="${o ? 'on' : ''}"/>${o ? `<text x="${x + dx}" y="${y + dy}" text-anchor="${an}" class="rname">${rn(o)}</text>` : ''}`).join('')}<rect x="54" y="82" width="12" height="12" transform="rotate(45 60 88)" class="home"/></svg>`;
+  const dia = diamondSVG(L, rn);
   let pop = '';
   const ev = g.ev;
   if (ev) {
@@ -911,6 +911,56 @@ function V_live() {
   ${L.prompt && !g.over ? hookPanel(L) : ''}
   ${controls ? `<div class="controls">${controls}</div>` : ''}
   <section class="card"><h3>Play-by-play</h3><ul class="pbp">${logs}</ul></section></div>`;
+}
+/* ---- base-running animation on the live diamond ---- */
+const BASE_XY = [[60, 88], [100, 50], [60, 12], [20, 50], [60, 88]];
+const BASE_MS = { slow: 430, normal: 300, fast: 150, test: 1 };
+function baseMoves(L) {
+  const g = L.g, cur = g.bases.map(o => o ? o.id : null), sl = g.scoredLog || [];
+  const key = [g.inn, g.half, g.seq || 0, sl.length, cur.join(',')].join('|');
+  const prev = L.bsnap;
+  L.bsnap = { key, cur, half: g.half, inn: g.inn, seq: g.seq || 0, scN: sl.length };
+  if (!prev || prev.key === key || (g.seq || 0) - prev.seq > 1) return { moves: [], arrive: {}, ms: 0 };
+  const per = BASE_MS[App.liveSpeed] || 300;
+  const pos = {}; prev.cur.forEach((id, i) => { if (id != null) pos[id] = i + 1; });
+  const halfChanged = prev.half !== g.half || prev.inn !== g.inn;
+  const from = id => pos[id] != null ? pos[id] : (id === g.lastBatId ? 0 : null);
+  const moves = [], arrive = {}; let ms = 0;
+  cur.forEach((id, i) => {
+    if (id == null) return; const k = i + 1, f = from(id);
+    if (f == null) { moves.push({ id, a: k, b: k, kind: 'appear' }); arrive[k] = per; ms = Math.max(ms, per); return; }
+    if (f < k) { const d = (k - f) * per; moves.push({ id, a: f, b: k, kind: 'run', d }); arrive[k] = d; ms = Math.max(ms, d); }
+  });
+  const scored = sl.slice(prev.scN);
+  scored.forEach(id => { const f = from(id); if (f == null) return; const d = (4 - f) * per; moves.push({ id, a: f, b: 4, kind: 'score', d }); ms = Math.max(ms, d + 350); });
+  Object.keys(pos).forEach(k => { const id = +k; if (cur.includes(id) || scored.includes(id)) return; moves.push({ id, a: pos[id], b: pos[id], kind: halfChanged ? 'strand' : 'out' }); ms = Math.max(ms, 500); });
+  return { moves, arrive, ms };
+}
+function diamondSVG(L, rn) {
+  const g = L.g, st = L.st, b = g.bases;
+  const { moves, arrive, ms } = baseMoves(L);
+  L.animMs = ms;
+  const col = id => { const p = st.players[id]; const t = p && st.teams[p.tid]; return (t && t.col) || 'var(--acc)'; };
+  const moving = new Set(moves.map(m => m.id));
+  const xy = i => BASE_XY[i];
+  const bases = [[1, 'end', -10, 18], [2, 'middle', 0, -12], [3, 'start', 10, 18]].map(([k, an, dx, dy]) => {
+    const o = b[k - 1], [x, y] = xy(k), d = arrive[k];
+    const delay = o && d ? ` style="animation:baseoff ${d}ms step-end"` : '';
+    return `<rect x="${x - 8}" y="${y - 8}" width="16" height="16" transform="rotate(45 ${x} ${y})" class="${o ? 'on' : ''}"${delay}/>${o ? `<text x="${x + dx}" y="${y + dy}" text-anchor="${an}" class="rname"${d ? ` style="animation:hid ${d}ms step-end"` : ''}>${rn(o)}</text>` : ''}`;
+  }).join('');
+  // runners standing still
+  const still = b.map((o, i) => o && !moving.has(o.id) ? `<circle cx="${xy(i + 1)[0]}" cy="${xy(i + 1)[1] - 1}" r="4.2" class="rdot" style="fill:${col(o.id)}"/>` : '').join('');
+  const anim = moves.map(m => {
+    const c = col(m.id);
+    if (m.kind === 'appear') return `<circle cx="${xy(m.b)[0]}" cy="${xy(m.b)[1] - 1}" r="4.2" class="rdot pop-in" style="fill:${c}"/>`;
+    if (m.kind === 'out' || m.kind === 'strand') { const [x, y] = xy(m.a); return `<g class="${m.kind === 'out' ? 'rout' : 'rstrand'}"><circle cx="${x}" cy="${y - 1}" r="4.2" class="rdot" style="fill:${c}"/>${m.kind === 'out' ? `<text x="${x}" y="${y + 2}" text-anchor="middle" class="rx">✕</text>` : ''}</g>`; }
+    const pts = []; for (let i = m.a; i <= m.b; i++) pts.push(xy(i)[0] + ' ' + (xy(i)[1] - 1));
+    const path = 'M' + pts.join(' L');
+    const trail = `<path d="${path}" pathLength="100" class="rtrail" style="stroke:${c};animation-duration:${m.d}ms"/>`;
+    const fade = m.kind === 'score' ? `<animate attributeName="opacity" from="1" to="0" begin="${m.d}ms" dur="350ms" fill="freeze"/><animate attributeName="r" from="4.2" to="9" begin="${m.d}ms" dur="350ms" fill="freeze"/>` : '';
+    return `${trail}<circle r="4.2" class="rdot${m.kind === 'score' ? ' rscore' : ''}" style="fill:${c}"><animateMotion dur="${m.d}ms" fill="freeze" calcMode="linear" path="${path}"/>${fade}</circle>`;
+  }).join('');
+  return `<svg viewBox="0 0 120 100" class="dia"><path d="M60 92 L104 50 L60 8 L16 50 Z" class="grass"/><path d="M60 88 L100 50 L60 12 L20 50 Z" fill="none" stroke="currentColor" opacity=".35"/>${bases}<rect x="54" y="82" width="12" height="12" transform="rotate(45 60 88)" class="home"/>${still}${anim}</svg>`;
 }
 function stamBarG(g, sd) { const s = g.stamina(sd, sd.pit); return `<span class="stm"><i><b class="${s > 55 ? 'r4' : s > 30 ? 'r2' : 'r1'}" style="width:${s}%"></b></i>${s}%</span>`; }
 function speedSel() { return `<select data-chg="lvSpeed" title="Sim speed">${[['slow', 'Slow'], ['normal', 'Normal'], ['fast', 'Fast']].map(o => `<option value="${o[0]}"${App.liveSpeed === o[0] ? ' selected' : ''}>${o[1]} speed</option>`).join('')}</select>`; }
@@ -966,7 +1016,7 @@ function liveTick() {
   if (L.auto === 'half' && (g.inn !== L.autoAt[0] || g.half !== L.autoAt[1])) L.auto = null;
   if (g.over) L.auto = null;
   render();
-  if (L.auto) { const ev = g.ev; const extra = (ev && ev.runs ? 1100 : ev && ev.c === 'HR' ? 600 : 0) + (g.lastSub && g.lastSub.seq !== L.lastSubTick ? 500 : 0); L.lastSubTick = g.lastSub && g.lastSub.seq; L.timer = setTimeout(liveTick, SPEED[App.liveSpeed] + extra); }
+  if (L.auto) { const ev = g.ev; const extra = Math.max(0, (L.animMs || 0) - SPEED[App.liveSpeed] * 0.6) + (ev && ev.runs ? 1100 : ev && ev.c === 'HR' ? 600 : 0) + (g.lastSub && g.lastSub.seq !== L.lastSubTick ? 500 : 0); L.lastSubTick = g.lastSub && g.lastSub.seq; L.timer = setTimeout(liveTick, SPEED[App.liveSpeed] + extra); }
 }
 function liveStop() { const L = App.live; if (L) { L.auto = null; clearTimeout(L.timer); if (L.aiOn) aiTakeover(L, false); } }
 function aiTakeover(L, on) {

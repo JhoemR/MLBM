@@ -143,9 +143,9 @@ main.full{max-width:1200px;margin:0 auto}
 /* live */
 .live .lhead{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:10px}.live .lhead h2{margin:0;font-size:30px}.live .lhead .btn{margin-left:auto}
 .t.ls td,.t.ls th{font-family:'Barlow Condensed';font-size:17px}.t.ls .R{color:var(--acc2);font-weight:800;font-size:20px}
-.lgrid{display:grid;grid-template-columns:260px 1fr;gap:14px}
+.lgrid{display:grid;grid-template-columns:320px 1fr;gap:14px}
 .field{display:flex;flex-direction:column;align-items:center;justify-content:center}
-.fieldwrap{position:relative;width:100%;max-width:300px}
+.fieldwrap{position:relative;width:100%;max-width:320px;margin:0 auto}
 .dia{width:100%;color:var(--muted);display:block}.dia .grass{fill:#173b27;opacity:.55}.dia .rname{font:600 7px Barlow,sans-serif;fill:var(--acc2)}
 .pop{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);padding:9px 16px 10px;border-radius:12px;text-align:center;font-family:'Barlow Condensed',sans-serif;min-width:150px;box-shadow:0 10px 30px rgba(0,0,0,.55),inset 0 0 0 2px rgba(255,255,255,.18);pointer-events:none;z-index:2}
 .pop b{display:block;font-size:26px;line-height:1.05;letter-spacing:1.5px;font-weight:800;color:#fff;text-shadow:0 2px 0 rgba(0,0,0,.25)}
@@ -340,6 +340,19 @@ a.pl{transition:color .12s}
 .tuthi{outline:2px solid var(--acc)!important;outline-offset:2px;border-radius:8px;animation:tutpulse 1.4s ease-in-out infinite}
 @keyframes tutpulse{50%{outline-color:transparent}}
 @media (max-width:900px){#tut{left:12px;right:12px;bottom:12px;width:auto;max-height:58vh}}
+
+/* base running animation */
+.pop{padding:6px 12px 7px;min-width:108px}.pop b{font-size:21px}.pop span{font-size:13px}
+.dia .rdot{stroke:#fff;stroke-width:1.2;filter:drop-shadow(0 0 2px rgba(0,0,0,.7))}
+.dia .rtrail{fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;opacity:.55;stroke-dasharray:100;stroke-dashoffset:100;animation-name:trail;animation-timing-function:linear;animation-fill-mode:forwards}
+@keyframes trail{to{stroke-dashoffset:0}}
+.dia .rout{animation:rout .55s ease-in forwards}.dia .rstrand{animation:rstrand .5s ease forwards}
+.dia .rx{font:800 7px Barlow,sans-serif;fill:#fff}
+@keyframes rout{0%,35%{opacity:1}100%{opacity:0;transform:translateY(-4px)}}@keyframes rstrand{to{opacity:0}}
+.dia .rout .rdot{fill:#e5484d!important}
+.dia .pop-in{animation:rpopin .3s cubic-bezier(.2,1.4,.4,1) both;transform-box:fill-box;transform-origin:center}
+@keyframes rpopin{from{transform:scale(0)}to{transform:scale(1)}}
+@keyframes baseoff{from,to{fill:#0f1a23;stroke:#4a5d70}}@keyframes hid{from,to{opacity:0}}
 </style>
 </head>
 <body>

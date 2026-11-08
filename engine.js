@@ -663,6 +663,7 @@ class Game {
     const off = this.off, def = this.def;
     off.runs++; off.ls[off.ls.length - 1]++;
     this.bline(off, run.id)[B.r]++;
+    if (this.logOn) (this.scoredLog || (this.scoredLog = [])).push(run.id);
     if (rbi && batterId != null) this.bline(off, batterId)[B.rbi]++;
     const resp = run.resp != null ? run.resp : def.pit;
     const pl = this.pline(def, resp); pl[P.r]++; if (run.resp != null) pl[P.er]++;
@@ -688,6 +689,7 @@ class Game {
     const off = this.off, def = this.def;
     this._r0 = off.runs; this._side = this.half;
     const slot = off.order[off.bi % 9]; off.bi++;
+    this.lastBatId = slot.id;
     const bat = this.P(slot.id), pit = this.P(def.pit);
     const bl = this.bline(off, bat.id), pl = this.pline(def, def.pit);
     bl[B.pa]++; pl[P.bf]++;
