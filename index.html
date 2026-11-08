@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a1016">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <title>Front Office Baseball</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -353,6 +356,66 @@ a.pl{transition:color .12s}
 .dia .pop-in{animation:rpopin .3s cubic-bezier(.2,1.4,.4,1) both;transform-box:fill-box;transform-origin:center}
 @keyframes rpopin{from{transform:scale(0)}to{transform:scale(1)}}
 @keyframes baseoff{from,to{fill:#0f1a23;stroke:#4a5d70}}@keyframes hid{from,to{opacity:0}}
+
+/* ===== phones ===== */
+.controls .lvtog{display:none}.controls .lvsec{display:contents}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+@media (max-width:700px){
+ body{overflow-x:hidden}
+ input,select,textarea{font-size:16px!important}
+ button,a,select,label{-webkit-tap-highlight-color:transparent}
+ header.top{position:relative;gap:6px 10px;padding:8px 12px;padding-top:calc(8px + env(safe-area-inset-top))}
+ header.top .brand{order:1;font-size:18px;padding:1px 7px}
+ header.top .lg{order:2;flex:1;min-width:0}
+ header.top .lg b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ header.top .lg .muted,header.top .myteam .muted{font-size:11.5px;white-space:nowrap}
+ header.top .myteam{order:3;gap:6px}header.top .myteam>div>b{display:none}
+ header.top .myteam .sw{max-width:110px}
+ header.top .tutq{order:4;min-width:30px;padding:5px 8px}
+ header.top .sv{display:none}
+ header.top .adv{order:5;width:100%;flex-wrap:nowrap;gap:6px;margin:0}
+ header.top .adv .btn{padding:8px 10px;white-space:nowrap;flex:0 0 auto}
+ header.top .adv select{flex:1 1 auto;min-width:0;width:auto}
+ .layout{grid-template-rows:auto 1fr;align-content:start;min-height:0}
+ nav.side{position:sticky;top:0;z-index:18;background:rgba(10,16,22,.97);backdrop-filter:blur(8px);padding:6px 8px;gap:4px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+ nav.side::-webkit-scrollbar{display:none}
+ nav.side a{font-size:15px;padding:7px 11px;flex:0 0 auto}
+ nav.side a.on{box-shadow:inset 0 -3px 0 var(--acc)}
+ main{padding:12px 10px calc(24px + env(safe-area-inset-bottom))}
+ .card{padding:12px;border-radius:10px}
+ .pagehead h2{font-size:22px}
+ .kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+ .tabs{overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}.tabs a{white-space:nowrap;flex:0 0 auto}
+ .scroll,.tplist,.tplist2{-webkit-overflow-scrolling:touch}
+ .cal{gap:2px;grid-template-columns:repeat(7,minmax(0,1fr))}
+ .cal-c{min-height:50px;padding:2px 3px;font-size:9.5px;overflow:hidden;border-radius:6px;min-width:0}
+ .cal-g{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+ .cal-ev{font-size:8px;padding:0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+ .cal-h{font-size:9.5px;letter-spacing:0}.cal-d{font-size:10px}
+ .bracket{grid-template-columns:repeat(4,minmax(150px,1fr))!important;overflow-x:auto;padding-bottom:6px;scroll-snap-type:x proximity}
+ .bracket>*{scroll-snap-align:start}
+ #modal{padding:0;align-items:flex-end}
+ .mbox{border-radius:16px 16px 0 0;max-height:92vh;max-height:92dvh;padding:16px 14px calc(18px + env(safe-area-inset-bottom))}
+ .mbox .x{top:8px;right:8px;font-size:22px;padding:6px}
+ .phead{flex-wrap:wrap;gap:10px}.phead>div:nth-child(2){order:3;flex:1 1 100%}.phead h2{font-size:24px}
+ .lgrid{grid-template-columns:1fr}
+ .fieldwrap{max-width:300px}
+ .live .lhead h2{font-size:24px}
+ .live>.card.flush{overflow-x:auto}
+ .mu{grid-template-columns:1fr!important}.mu .vs{display:none}
+ .controls{bottom:0;margin:6px -10px 12px;border-radius:12px 12px 0 0;padding:10px 10px calc(10px + env(safe-area-inset-bottom));gap:6px;box-shadow:0 -8px 24px rgba(0,0,0,.45)}
+ .controls .btn{padding:9px 11px}
+ .controls .lvtog{display:inline-flex}
+ .controls .lvsec{display:none}.controls.more .lvsec{display:flex;flex-wrap:wrap;gap:6px;width:100%}
+ .controls select{max-width:100%}
+ .hook .scroll{max-height:40vh}
+ #toasts{left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));max-width:none}
+ .teamgrid{grid-template-columns:1fr 1fr!important}
+ .row{flex-wrap:wrap}
+ .start{padding:12px}
+ .lu-t select{max-width:150px}
+ .t td,.t th{padding-left:6px;padding-right:6px}
+}
 </style>
 </head>
 <body>

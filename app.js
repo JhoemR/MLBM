@@ -184,6 +184,7 @@ function render() {
   if (same && sc) { [...root.querySelectorAll('.scroll,.pbp,.tplist')].forEach((e, i) => { if (sc[i]) { e.scrollTop = sc[i][0]; e.scrollLeft = sc[i][1]; } }); if (Math.abs(window.scrollY - wy) > 2) window.scrollTo(0, wy); }
   else { const m = root.querySelector('main'); if (m) m.classList.add('enter'); }
   _lastView = key;
+  if (!same && innerWidth <= 700) { const nv = root.querySelector('nav.side'), on = nv && nv.querySelector('a.on'); if (on) nv.scrollLeft = on.offsetLeft - (nv.clientWidth - on.offsetWidth) / 2; }
   if (App.tut && window.tutAfterRender) tutAfterRender();
 }
 function _render(root) {
@@ -893,7 +894,7 @@ function V_live() {
       controls = `<button class="btn primary" data-act="lv" data-k="pa">Next At-Bat</button><button class="btn" data-act="lv" data-k="ibb">Intentional Walk</button>
       ${avail.length ? `<select data-chg="lvPC"><option value="">Pitching change…</option>${avail.map(id => { const p = st.players[id]; return `<option value="${id}">${esc(F.sname(p))} (${p.p}, ${p.o}, ⚡${Math.round(p.e)})${id === def.cl ? ' – CL' : id === def.su ? ' – SU' : ''}</option>`; }).join('')}</select>` : '<span class="muted sm">Bullpen empty</span>'}`;
     }
-    controls += `<button class="btn ghost" data-act="lv" data-k="half">▶ Play Half-Inning</button><button class="btn ghost" data-act="lv" data-k="end">▶▶ Play to End</button>${speedSel()}<button class="btn ghost sm" data-act="lv" data-k="instant" title="Skip straight to the final — the AI manages your team">Skip to Final</button><label class="chk" title="When you Play to End, the AI makes pinch-hit and pitching moves for you"><input type="checkbox" data-chg="aiTake"${App.aiTake ? ' checked' : ''}> AI manages my team on Play to End</label><select data-chg="lvPen" title="Bullpen management">${[['ask', 'Bullpen: ask me'], ['ai', 'Bullpen: AI decides'], ['manual', 'Bullpen: manual only']].map(o => `<option value="${o[0]}"${App.penMode === o[0] ? ' selected' : ''}>${o[1]}</option>`).join('')}</select>`;
+    controls += `<button class="btn ghost" data-act="lv" data-k="half">▶ Play Half-Inning</button><button class="btn ghost" data-act="lv" data-k="end">▶▶ Play to End</button><button class="btn ghost sm lvtog" data-act="lvMore">${App.lvMore ? '✕ Close' : '⚙ Options'}</button><span class="lvsec">${speedSel()}<button class="btn ghost sm" data-act="lv" data-k="instant" title="Skip straight to the final — the AI manages your team">Skip to Final</button><label class="chk" title="When you Play to End, the AI makes pinch-hit and pitching moves for you"><input type="checkbox" data-chg="aiTake"${App.aiTake ? ' checked' : ''}> AI manages my team on Play to End</label><select data-chg="lvPen" title="Bullpen management">${[['ask', 'Bullpen: ask me'], ['ai', 'Bullpen: AI decides'], ['manual', 'Bullpen: manual only']].map(o => `<option value="${o[0]}"${App.penMode === o[0] ? ' selected' : ''}>${o[1]}</option>`).join('')}</select></span>`;
   }
   const final = g.over ? `<section class="card hi"><h3>Final: ${esc(g.scoreStr())}</h3><p>${g.s[L.side].runs > g.s[1 - L.side].runs ? '<b class="good">Victory!</b>' : '<b class="bad">Tough loss.</b>'} ${g.result ? `W: ${esc(F.sname(st.players[g.result.w]))} · L: ${esc(F.sname(st.players[g.result.l]))}${g.result.sv ? ' · SV: ' + esc(F.sname(st.players[g.result.sv])) : ''}` : ''}</p><div class="row"><button class="btn primary" data-act="liveSave">Save Result & Continue</button><button class="btn ghost" data-act="liveBox">Box Score</button></div></section>` : '';
   const logs = g.log.slice(-60).reverse().map(x => `<li>${x}</li>`).join('');
@@ -909,7 +910,7 @@ function V_live() {
    <div class="rt">VEL <b class="${rc(pit.r.vel)}t">${Math.round(pit.r.vel)}</b> CTL <b class="${rc(pit.r.ctl)}t">${Math.round(pit.r.ctl)}</b> BRK <b class="${rc(pit.r.brk)}t">${Math.round(pit.r.brk)}</b></div>
    <div class="bar stam"><span>Stamina · ${pc} P</span><i><b class="${fat > 55 ? 'r4' : fat > 30 ? 'r2' : 'r1'}" style="width:${fat}%"></b></i><em>${fat}%</em></div>${fat <= 30 ? '<div class="bad sm">⚠ Tired — his pitches are losing life</div>' : fat <= 50 ? '<div class="warn sm">Starting to tire</div>' : ''}</div></section></div>
   ${L.prompt && !g.over ? hookPanel(L) : ''}
-  ${controls ? `<div class="controls">${controls}</div>` : ''}
+  ${controls ? `<div class="controls${App.lvMore ? ' more' : ''}">${controls}</div>` : ''}
   <section class="card"><h3>Play-by-play</h3><ul class="pbp">${logs}</ul></section></div>`;
 }
 /* ---- base-running animation on the live diamond ---- */
@@ -1160,6 +1161,7 @@ async function createFromWizard() {
 const H = {
   nav: el => { App.view = el.dataset.v; closeModal(); render(); window.scrollTo(0, 0); },
   home: () => goHome(),
+  lvMore: () => { App.lvMore = !App.lvMore; render(); },
   tab: el => { App.tab[el.dataset.g] = el.dataset.v; render(); },
   sort: el => { const g = el.dataset.g; if (App.sort[g] === el.dataset.k) App.sort[g + 'rev'] = !App.sort[g + 'rev']; else { App.sort[g] = el.dataset.k; App.sort[g + 'rev'] = false; } render(); },
   player: el => openPlayer(+el.dataset.id),
