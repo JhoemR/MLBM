@@ -172,7 +172,8 @@ function V_wizard(w) {
    <label>Season length<select id="wGames">${[162, 81, 54, 30].map(n => `<option value="${n}"${w.games == n ? ' selected' : ''}>${n} games</option>`).join('')}</select></label>
    <label>Trade AI difficulty<select id="wDiff">${['easy', 'normal', 'hard'].map(n => `<option${w.diff === n ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
    <label>Injuries<select id="wInj"><option value="1"${w.inj ? ' selected' : ''}>On</option><option value="0"${!w.inj ? ' selected' : ''}>Off</option></select></label>
-   ${w.mode === 'shared' ? `<label>Who can advance the calendar<select id="wAdv"><option value="commish">Commissioner only</option><option value="ready">Anyone, once all managers are ready</option><option value="any">Any manager</option></select></label>` : ''}
+   ${w.mode === 'shared' ? `<label>Who can advance the calendar<select id="wAdv"><option value="commish">Commissioner only</option><option value="ready">Anyone, once all managers are ready</option><option value="any">Any manager</option></select></label>
+   <label>Commissioner trade approval<select id="wAppr">${[['off', 'Off: trades go through right away'], ['human', 'Trades between two managers'], ['all', 'Every trade involving a manager (incl. with AI teams)']].map(o => `<option value="${o[0]}"${o[0] === 'human' ? ' selected' : ''}>${o[1]}</option>`).join('')}</select></label>` : ''}
   </div>
   <h3>${w.mode === 'shared' ? 'Pick your team' : 'Pick your team(s) — choose more than one for couch co-op'}</h3>
   <div class="teamgrid">${teams}</div>
@@ -209,7 +210,7 @@ function _render(root) {
   let body;
   try { body = fn(); } catch (e) { console.error(e); body = `<div class="card">Error rendering this page: ${esc(e.message)}</div>`; }
   const st = App.st, my = myTid();
-  const badge = k => (k === 'trades' && st.offers.some(o => o.status === 'open' && canControl(o.to))) ? ' <i class="dot"></i>' :
+  const badge = k => (k === 'trades' && st.offers.some(o => (o.status === 'open' && canControl(o.to)) || (o.status === 'pending' && isCommish()))) ? ' <i class="dot"></i>' :
     (k === 'draft' && st.phase === 'draft' && st.draft && canControl(st.draft.picks[st.draft.i])) ? ' <i class="dot"></i>' :
       (k === 'fa' && st.phase === 'fa') ? ' <i class="dot"></i>' : (k === 'inbox' && unreadCount() ? ` <i class="ub">${unreadCount()}</i>` : '') || (k === 'fantasy' && st.fd && !st.fd.done && canControl(st.fd.picks[st.fd.i]) ? ' <i class="dot"></i>' : '');
   const navList = st.phase === 'fantasy' ? [['fantasy', 'Fantasy Draft'], ['staff', 'Staff'], ['league', 'League'], ['settings', 'Settings']] : NAV.concat(st.phase === 'resign' ? [['resign', 'Re-sign']] : []);
@@ -234,6 +235,26 @@ function shellTop() {
   <div class="sv"><span id="savestate" class="muted sm">${App.mode === 'shared' ? 'Shared league' : ''}</span></div>
   </header>`;
 }
+function pendingHtml() {
+  const st = App.st, c = isCommish();
+  const list = pendingTrades(st).filter(o => c || canControl(o.from) || canControl(o.to));
+  if (!list.length) return App.mode === 'shared' && (st.settings.tradeApproval || 'off') !== 'off' ? `<p class="muted sm">🛡 Commissioner approval is on for ${st.settings.tradeApproval === 'all' ? 'every trade involving a manager' : 'trades between two managers'}.</p>` : '';
+  const side = (tid, ids) => `<div class="pside">${tb(tid)} <b>${esc(T(tid).name)}</b> send<div>${ids.map(id => { const p = PL(id); return p ? `<span class="dchip"><span class="ov ${rc(p.o)}">${p.o}</span><span>${plink(p)}<small class="muted"> ${p.p} · ${p.a}y · ${money(p.sal)}</small></span></span>` : '<span class="muted">(gone)</span>'; }).join('') || '<span class="muted sm">nothing</span>'}</div></div>`;
+  const val = ids => Math.round(ids.reduce((s, id) => s + (PL(id) ? F.pval(PL(id)) : 0), 0) * 10) / 10;
+  return `<section class="card pendcard"><h3>🛡 ${c ? 'Trades awaiting your approval' : 'Waiting for commissioner approval'} <span class="muted sm">(${list.length})</span></h3>${list.map(o => `<div class="pend">
+    <div class="pgrid">${side(o.from, o.give)}<div class="darrow">⇄</div>${side(o.to, o.get)}</div>
+    <div class="row pfoot"><span class="muted sm">Value ${val(o.give)} ⇄ ${val(o.get)} · agreed ${o.at != null ? F.dayLabel(st, o.at) : ''}${o.ai ? ' · AI team accepted' : ''}</span><span style="flex:1"></span>
+    ${c ? `<button class="btn good" data-act="tApprove" data-id="${o.id}">✓ Approve</button><button class="btn bad ghost" data-act="tVeto" data-id="${o.id}">✕ Veto</button>` : ''}${(canControl(o.from) || canControl(o.to)) && !c ? `<button class="btn ghost sm" data-act="tPendCancel" data-id="${o.id}">Call off</button>` : ''}</div></div>`).join('')}</section>`;
+}
+function needsApproval(st, deal) {
+  if (App.mode !== 'shared') return false;
+  const m = st.settings.tradeApproval || 'off'; if (m === 'off') return false;
+  const hum = [deal.from, deal.to].filter(id => st.teams[id].user != null);
+  if (!hum.length || (m === 'human' && hum.length < 2)) return false;
+  if (hum.some(id => st.teams[id].user === st.commish)) return false; // the commissioner's own deals go straight through
+  return true;
+}
+function pendingTrades(st) { return (st.offers || []).filter(o => o.status === 'pending'); }
 function managersCard() {
   const st = App.st, c = isCommish();
   const rows = members().map(u => `<tr><td class="l"><b>${esc(uname(u))}</b>${u === st.commish ? ' <span class="tag">Commissioner</span>' : ''}${u === S.uid ? ' <span class="muted sm">(you)</span>' : ''}</td><td>${tb(st.members[u])}</td><td>${st.ready && st.ready[u] ? '<span class="good sm">Ready</span>' : '<span class="muted sm">—</span>'}</td><td class="r">${c && u !== S.uid ? `<button class="mini bad ghost" data-act="kick" data-id="${esc(u)}">Remove manager</button>` : ''}${u === S.uid && u !== st.commish ? `<button class="mini ghost" data-act="leave">Leave league</button>` : ''}</td></tr>`).join('');
@@ -313,6 +334,9 @@ function V_home() {
   // offers
   const inc = st.offers.filter(o => o.status === 'open' && canControl(o.to));
   if (inc.length) parts.push(`<section class="card hi"><h3>${inc.length} trade offer${inc.length > 1 ? 's' : ''} waiting</h3><button class="btn" data-act="nav" data-v="trades">Review</button></section>`);
+  const pend = App.mode === 'shared' ? pendingTrades(st) : [];
+  if (pend.length && isCommish()) parts.push(`<section class="card hi"><h3>🛡 ${pend.length} trade${pend.length > 1 ? 's' : ''} awaiting your approval</h3><button class="btn primary" data-act="nav" data-v="trades">Review trades</button></section>`);
+  else { const mine = pend.filter(o => canControl(o.from) || canControl(o.to)); if (mine.length) parts.push(`<section class="card"><h3>🛡 ${mine.length} of your trades ${mine.length > 1 ? 'are' : 'is'} waiting for the commissioner</h3><button class="btn ghost" data-act="nav" data-v="trades">View</button></section>`); }
   // team snapshot
   const pay = F.payroll(st, my);
   const last = recentGames(my, 6);
@@ -425,7 +449,7 @@ function rosterTable(list, pit, mine, tab) {
     ['W', p => sp(p, 'w')], ['L', p => sp(p, 'l')], ['ERA', p => SPx(p) ? -F.pitLine(SPx(p)).era : -99], ['IP', p => sp(p, 'o')], ['K', p => sp(p, 'k')], ['SV', p => sp(p, 'sv')], ['NRG', p => p.e], ['$', p => p.sal], ['Yrs', p => p.y]]
     : [['Pos', p => F.POS_ORDER_IDX(p.p)], ['Name', p => p.l], ['Age', p => p.a], ['B/T', p => p.b], ['OVR', p => p.o], ['±', p => p.trend || 0], ['POT', p => p.pt],
     ['CON', p => p.r.con], ['POW', p => p.r.pow], ['EYE', p => p.r.eye], ['SPD', p => p.r.spd], ['FLD', p => p.r.fld], ['ARM', p => p.r.arm],
-    ['G', p => sb(p, 'g')], ['AVG', p => SB(p) ? F.batLine(SB(p)).avg : -1], ['HR', p => sb(p, 'hr')], ['RBI', p => sb(p, 'rbi')], ['SB', p => sb(p, 'sb')], ['OPS', p => SB(p) ? F.batLine(SB(p)).ops : -1], ['$', p => p.sal], ['Yrs', p => p.y]];
+    ['G', p => sb(p, 'g')], ['AVG', p => SB(p) ? F.batLine(SB(p)).avg : -1], ['HR', p => sb(p, 'hr')], ['RBI', p => sb(p, 'rbi')], ['SB', p => sb(p, 'sb')], ['OPS', p => SB(p) ? F.batLine(SB(p)).ops : -1], ['NRG', p => p.e], ['$', p => p.sal], ['Yrs', p => p.y]];
   const g = pit ? 'rosP' : 'rosH';
   const sk = App.sort[g], col = cols.find(c => c[0] === sk);
   let rows = list.slice();
@@ -437,7 +461,7 @@ function rosterTable(list, pit, mine, tab) {
     const st0 = '<td>—</td>';
     let stats;
     if (pit) { const q = SPx(p); const l = q ? F.pitLine(q) : null; stats = q ? `<td>${q[P.w]}</td><td>${q[P.l]}</td><td>${f2(l.era)}</td><td>${ipS(q[P.o])}</td><td>${q[P.k]}</td><td>${q[P.sv]}</td>` : st0.repeat(6); stats += `<td>${energy(p)}</td>`; }
-    else { const q = SB(p); const l = q ? F.batLine(q) : null; stats = q ? `<td>${q[B.g]}</td><td>${f3(l.avg)}</td><td>${q[B.hr]}</td><td>${q[B.rbi]}</td><td>${q[B.sb]}</td><td>${f3(l.ops)}</td>` : st0.repeat(6); }
+    else { const q = SB(p); const l = q ? F.batLine(q) : null; stats = q ? `<td>${q[B.g]}</td><td>${f3(l.avg)}</td><td>${q[B.hr]}</td><td>${q[B.rbi]}</td><td>${q[B.sb]}</td><td>${f3(l.ops)}</td>` : st0.repeat(6); stats += `<td>${energyH(p)}</td>`; }
     const rk = pit ? ['vel', 'ctl', 'brk', 'sta'] : ['con', 'pow', 'eye', 'spd', 'fld', 'arm'];
     const role = pit ? `<td>${p.lv === 0 ? `<span class="tag">${roleOf(p) === 'MR' && (t.rot || []).includes(p.id) ? 'SP' + ((t.rot || []).indexOf(p.id) + 1) : roleOf(p)}</span>` : ''}</td>` : '';
     const sec = F.POS_ALL.filter(x => x !== p.p && F.famAt(p, x) >= 75); const secS = !pit && sec.length ? `<div class="muted sm">${sec.join(', ')}</div>` : '';
@@ -497,6 +521,8 @@ function V_lineup() {
   const hit = act.filter(p => !F.isP(p)).sort((a, b) => b.o - a.o), pit = act.filter(F.isP).sort((a, b) => b.o - a.o);
   const lu = (t.lu && t.lu.length === 9) ? t.lu : F.autoLineup(st, t);
   const issues = lineupIssues(st, t, lu);
+  const autoRest = t.auto || t.autoRest !== false;
+  const tired = lu.map(s => PL(s.id)).filter(p => p && F.wantsRest(p));
   const optsH = cur => hit.map(p => `<option value="${p.id}"${p.id === cur ? ' selected' : ''}${p.inj ? ' disabled' : ''}>${esc(F.sname(p))} · ${p.p} · ${p.o}${p.inj ? ' (inj)' : ''}</option>`).join('');
   const optsPos = cur => F.LPOS.map(x => `<option${x === cur ? ' selected' : ''}>${x}</option>`).join('');
   const rows = lu.map((s, i) => {
@@ -506,6 +532,7 @@ function V_lineup() {
     return `<tr><td><b class="ord">${i + 1}</b></td><td class="nw"><button class="mini" data-act="luUp" data-i="${i}"${i ? '' : ' disabled'} title="Move up">▲</button><button class="mini" data-act="luDn" data-i="${i}"${i < 8 ? '' : ' disabled'} title="Move down">▼</button></td>
     <td class="l pp"><select data-chg="luP" data-i="${i}">${optsH(s.id)}</select></td><td><select data-chg="luPos" data-i="${i}">${optsPos(s.pos)}</select></td>
     <td><span class="ov ${rc(at)}">${at}</span>${oop ? '<div class="oop">out of position</div>' : ''}</td>
+    <td class="nw">${energyH(p)}${F.wantsRest(p) ? (autoRest ? '<div class="restd">Rest day</div>' : '<div class="oop">tired</div>') : ''}</td>
     <td class="${rc(p.r.con)}t">${Math.round(p.r.con)}</td><td class="${rc(p.r.pow)}t">${Math.round(p.r.pow)}</td><td class="${rc(p.r.eye)}t">${Math.round(p.r.eye)}</td><td class="${rc(p.r.spd)}t">${Math.round(p.r.spd)}</td><td>${p.b}</td>
     <td class="sm">${l ? `${f3(l.avg)} · ${p.sb[B.hr]} HR · ${f3(l.ops)}` : '—'}</td></tr>`;
   }).join('');
@@ -518,8 +545,9 @@ function V_lineup() {
   ${t.auto ? '<p class="muted">AI is managing your depth chart (it rebuilds before each game). Change anything below to take control.</p>' : ''}
   <section class="card flush luwrap"><div class="pagehead pad"><h3>Batting Order <span class="muted sm">(universal DH)</span></h3><div class="row"><button class="btn ghost sm" data-act="luFix" title="Keep these 9 hitters, put each at his best position">Best positions</button><button class="btn ghost sm" data-act="luOrder" title="Keep the 9 hitters and positions, re-sort the order">Optimize order</button></div></div>
   ${issues.length ? `<div class="luissues pad">⚠ ${issues.map(esc).join(' · ')} — the game will auto-fix this at first pitch.</div>` : ''}
-  <div class="scroll"><table class="t lu-t"><tr><th>#</th><th></th><th class="l">Player</th><th>Pos</th><th>Rtg @ Pos</th><th>CON</th><th>POW</th><th>EYE</th><th>SPD</th><th>Bats</th><th>Season</th></tr>${rows}</table></div>
-  <div class="bench-row"><b class="muted sm">BENCH</b>${bench.map(p => `<span class="chipb">${plink(p, true)} <span class="muted">${p.p} · ${p.o}</span><button class="mini" data-act="luStart" data-id="${p.id}" title="Start him: replaces the starter at his position (or the DH)">Start</button></span>`).join('') || '<span class="muted sm">No bench players.</span>'}</div>
+  <div class="restbar pad"><label class="chk"><input type="checkbox" data-chg="autoRest"${autoRest ? ' checked' : ''}${t.auto ? ' disabled' : ''}> Auto-rest tired regulars</label><span class="muted sm">Everyday players lose a little energy each game (catchers the most, DHs the least) and get it back on off days. Below ⚡${F.REST_E} they get a day off, and the best bench player fills in for that game only. Tired players hit a little worse.</span>${tired.length ? `<span class="sm ${autoRest ? 'warn' : 'bad'}">${autoRest ? 'Resting next game: ' : 'Tired and still starting: '}${tired.map(p => esc(F.sname(p))).join(', ')}</span>` : ''}</div>
+  <div class="scroll"><table class="t lu-t"><tr><th>#</th><th></th><th class="l">Player</th><th>Pos</th><th>Rtg @ Pos</th><th>NRG</th><th>CON</th><th>POW</th><th>EYE</th><th>SPD</th><th>Bats</th><th>Season</th></tr>${rows}</table></div>
+  <div class="bench-row"><b class="muted sm">BENCH</b>${bench.map(p => `<span class="chipb">${plink(p, true)} <span class="muted">${p.p} · ${p.o}</span> ${energyH(p)}<button class="mini" data-act="luStart" data-id="${p.id}" title="Start him: replaces the starter at his position (or the DH)">Start</button></span>`).join('') || '<span class="muted sm">No bench players.</span>'}</div>
   <p class="muted sm pad" style="padding-bottom:12px">Pick a bench player in any slot to put him in that spot. Picking someone already in the lineup swaps the two. Changing a position swaps it with whoever had it.</p></section>
   <div class="grid2"><section class="card"><h3>Starting Rotation</h3>${rot.map((id, i) => `<label class="lrow"><span>SP${i + 1}</span><select data-chg="rot" data-i="${i}">${optsP(id, true)}</select>${id && PL(id) ? `<em>${energy(PL(id))} ${restInfo(PL(id))}</em>` : ''}</label>`).join('')}<p class="muted sm">Starters need 4–5 days of rest depending on how deep they went (85+ energy to start). If the scheduled starter isn't ready, the next rested arm in the rotation takes the ball.</p></section>
   <section class="card">${penRolesHtml(st, t, pen)}</section></div>`;
@@ -550,6 +578,7 @@ function penRolesHtml(st, t, pen) {
   <p class="muted sm"><b>Middle Relief</b> (everyone else): ${mr.map(p => `${plink(p, true)} <span class="muted">${p.o}</span> ${energy(p)}`).join(' · ') || 'none'}</p>
   <p class="muted sm">Max: 1 closer, 1 stopper, 2 setup, 2 specialists, 2 long relievers. AI managers use these roles in every game; in games you play, they're labeled in the bullpen panel.</p>`;
 }
+function energyH(p) { const e = Math.round(p.e); return `<span class="en ${e >= 80 ? 'good' : e >= F.REST_E ? 'warn' : 'bad'}" title="Energy: everyday players wear down slowly and need an occasional day off">⚡${e}</span>`; }
 function energy(p) { const e = Math.round(p.e); return `<span class="en ${e >= 85 ? 'good' : e >= 60 ? 'warn' : 'bad'}" title="Energy">⚡${e}</span>`; }
 function restInfo(p) { if (p.e >= 85) return '<span class="good sm">Ready to start</span>'; const d = Math.ceil((85 - p.e) / 21); return `<span class="warn sm">Needs ${d} more day${d > 1 ? 's' : ''} rest</span>`; }
 function editLineup(mut) {
@@ -718,6 +747,7 @@ function V_trades() {
   return `<div class="pagehead"><h2>Trade Center</h2><button class="btn ghost" data-act="nav" data-v="hub">Trade Hub ›</button></div>
   ${!open ? `<p class="bad">${st.phase === 'regular' ? 'The trade deadline has passed. Trades reopen after the postseason.' : 'Trades are closed during this phase.'}</p>` : ''}
   ${offerHtml ? `<section class="card hi"><h3>Trade offers</h3>${offerHtml}</section>` : ''}
+  ${pendingHtml()}
   <section class="card partner"><div class="prt">${tb(pt.id, true)}<div><small class="muted">Trading with</small><select data-chg="tradePartner" class="psel">${st.teams.filter(t => t.id !== my).map(t => `<option value="${t.id}"${t.id === tr.partner ? ' selected' : ''}>${t.ab} — ${esc(F.tname(t))}${t.user ? ' ★ human' : ''}</option>`).join('')}</select></div></div>
    <div class="pinfo"><span class="stag s-${strat}">${strat === 'Contender' ? '🏆 ' : strat === 'Rebuilding' ? '🔧 ' : '⚖️ '}${strat}</span><span class="sm">${rec(pt)} · needs: ${needs.length ? needs.map(n => `<b class="bad">${n}</b>`).join(', ') : 'none'}</span><span class="muted sm">${strat === 'Rebuilding' ? 'Values young players & prospects' : strat === 'Contender' ? 'Wants proven big leaguers' : 'Looking for fair value'}</span></div></section>
   <section class="card deal">
@@ -838,6 +868,7 @@ function V_settings() {
    <label>Name<input id="sName" value="${esc(st.name)}" maxlength="40"${c ? '' : ' disabled'}></label>
    <label>Trade AI difficulty<select id="sDiff"${c ? '' : ' disabled'}>${['easy', 'normal', 'hard'].map(n => `<option${st.settings.diff === n ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
    <label>Injuries<select id="sInj"${c ? '' : ' disabled'}><option value="1"${st.settings.injuries ? ' selected' : ''}>On</option><option value="0"${!st.settings.injuries ? ' selected' : ''}>Off</option></select></label>
+   ${App.mode === 'shared' ? `<label>Commissioner trade approval<select id="sAppr"${c ? '' : ' disabled'}>${[['off', 'Off: trades go through right away'], ['human', 'Trades between two managers'], ['all', 'Every trade involving a manager (incl. with AI teams)']].map(o => `<option value="${o[0]}"${(st.settings.tradeApproval || 'off') === o[0] ? ' selected' : ''}>${o[1]}</option>`).join('')}</select></label>` : ''}
    ${App.mode === 'shared' ? `<label>Who can advance<select id="sAdv"${c ? '' : ' disabled'}>${[['commish', 'Commissioner only'], ['ready', 'Anyone, once all are ready'], ['any', 'Any manager']].map(o => `<option value="${o[0]}"${st.settings.advance === o[0] ? ' selected' : ''}>${o[1]}</option>`).join('')}</select></label>` : ''}
    <p class="muted sm">Season length (${st.settings.games} games) is fixed for this league.</p>
    ${c ? '<button class="btn primary" data-act="saveSettings">Save settings</button>' : '<p class="muted sm">Only the commissioner can change league settings.</p>'}</div></section>
@@ -923,7 +954,7 @@ function V_live() {
   <div class="card flush"><table class="t ls"><tr><th class="l"></th>${Array.from({ length: n }, (_, k) => `<th>${k + 1}</th>`).join('')}<th>R</th><th>H</th></tr>${ls}</table></div>
   ${final}
   <div class="lgrid"><section class="card field"><div class="fieldwrap">${dia}${pop}${subBan}</div>${outs}</section>
-  <section class="card mu"><div class="who"><small>AT BAT · ${esc(TT(off.tid).ab)} · #${(off.bi % 9) + 1} · ${slot.pos}</small><b>${esc(F.pname(bat))}</b><span class="muted">${bat.b}HB · ${bat.o} OVR · Today ${today}${sl ? ` · Season ${f3(sl.avg)}, ${bat.sb[B.hr]} HR` : ''}</span>
+  <section class="card mu"><div class="who"><small>AT BAT · ${esc(TT(off.tid).ab)} · #${(off.bi % 9) + 1} · ${slot.pos}</small><b>${esc(F.pname(bat))}</b><span class="muted">${bat.b}HB · ${bat.o} OVR · ⚡${Math.round(bat.e)} · Today ${today}${sl ? ` · Season ${f3(sl.avg)}, ${bat.sb[B.hr]} HR` : ''}</span>
    <div class="rt">CON <b class="${rc(bat.r.con)}t">${Math.round(bat.r.con)}</b> POW <b class="${rc(bat.r.pow)}t">${Math.round(bat.r.pow)}</b> EYE <b class="${rc(bat.r.eye)}t">${Math.round(bat.r.eye)}</b> SPD <b class="${rc(bat.r.spd)}t">${Math.round(bat.r.spd)}</b></div></div>
    <div class="vs">vs</div>
    <div class="who"><small>PITCHING · ${esc(TT(def.tid).ab)}</small><b>${esc(F.pname(pit))}</b><span class="muted">${pit.t}HP · ${pit.o} OVR · ${pln ? ipS(pln[P.o]) + ' IP, ' + pln[P.r] + ' R, ' + pln[P.k] + ' K' : 'just entered'}</span>
@@ -1158,14 +1189,14 @@ function goHome() { try { if (location.hash) location.hash = ''; } catch (e) { }
 async function createFromWizard() {
   const w = App.start.wizard;
   w.name = ($('#wName').value || '').trim() || 'My Franchise'; w.games = +$('#wGames').value; w.real = $('#wReal').value === '1'; w.fd = $('#wFd').value === '1'; w.diff = $('#wDiff').value; w.inj = $('#wInj').value === '1';
-  const adv = $('#wAdv') ? $('#wAdv').value : 'commish';
+  const adv = $('#wAdv') ? $('#wAdv').value : 'commish', appr = $('#wAppr') ? $('#wAppr').value : 'off';
   if (!w.teams.length) return toast('Pick a team first.', 'err');
   busy(true, 'Building the league…'); await nextFrame();
   try {
     const st = F.createLeague({ real: w.real, name: w.name, games: w.games, diff: w.diff, injuries: w.inj, advance: adv, commish: w.mode === 'shared' ? S.uid : null });
     if (w.fd) F.fdStart(st);
     if (w.mode === 'shared') {
-      const tid = w.teams[0]; st.teams[tid].user = S.uid; st.members[S.uid] = tid;
+      const tid = w.teams[0]; st.teams[tid].user = S.uid; st.members[S.uid] = tid; st.settings.tradeApproval = appr;
       if (st.fd) st.fd.paused = true;
       const lid = await S.createShared(st);
       App.start.wizard = null; busy(false);
@@ -1241,7 +1272,7 @@ const H = {
   kick: el => { const u = el.dataset.id; confirmBox('Remove this manager? Their team goes back to AI control.', () => { closeModal(); act(st => { const tid = st.members[u]; if (tid != null) { st.teams[tid].user = null; st.teams[tid].auto = true; } delete st.members[u]; delete st.ready[u]; }); }); },
   leave: () => confirmBox('Leave this league? Your team goes back to AI control.', () => { closeModal(); act(st => { const tid = st.members[S.uid]; if (tid != null) { st.teams[tid].user = null; st.teams[tid].auto = true; } delete st.members[S.uid]; delete st.ready[S.uid]; }); }),
   toggleUser: el => { const tid = +el.dataset.id; act(st => { const t = st.teams[tid]; if (t.user && st.teams.filter(x => x.user).length === 1) return 'You need at least one team.'; t.user = t.user ? null : 'local'; if (!t.user) t.auto = true; }); },
-  saveSettings: () => { const name = ($('#sName').value || '').trim() || 'League', diff = $('#sDiff').value, inj = $('#sInj').value === '1', adv = $('#sAdv') ? $('#sAdv').value : null; act(st => { st.name = name; st.settings.diff = diff; st.settings.injuries = inj; if (adv) st.settings.advance = adv; }).then(e => { if (!e) toast('Settings saved.', 'good'); }); },
+  saveSettings: () => { const name = ($('#sName').value || '').trim() || 'League', diff = $('#sDiff').value, inj = $('#sInj').value === '1', adv = $('#sAdv') ? $('#sAdv').value : null, appr = $('#sAppr') ? $('#sAppr').value : null; act(st => { st.name = name; st.settings.diff = diff; st.settings.injuries = inj; if (adv) st.settings.advance = adv; if (appr) st.settings.tradeApproval = appr; }).then(e => { if (!e) toast('Settings saved.', 'good'); }); },
   move: el => {
     const id = +el.dataset.id, to = +el.dataset.to; closeModal();
     act(st => {
@@ -1291,10 +1322,19 @@ const H = {
     const human = App.st.teams[tr.partner].user != null && App.mode === 'shared';
     if (human) return act(st => { const e = F.validTrade(st, deal); if (e) return e; st.offers.push(Object.assign({ id: S.rid(), status: 'open', s: st.season }, deal)); F.newsAdd(st, `${st.teams[deal.from].name} sent a trade offer to the ${st.teams[deal.to].name}.`, deal.to); }).then(e => { if (!e) { toast('Offer sent.', 'good'); App.trade.give = []; App.trade.get = []; render(); } });
     const localHuman = App.st.teams[tr.partner].user != null;
-    act(st => { const e = F.validTrade(st, deal); if (e) return e; if (!localHuman) { const ev = F.tradeEval(st, deal); if (!ev.ok) return `${st.teams[deal.to].name} declined. They want more value (${ev.recv} offered vs ${ev.need} needed).`; } return F.executeTrade(st, deal) || undefined; })
-      .then(e => { if (!e) { toast('Trade accepted!', 'good'); App.trade.give = []; App.trade.get = []; render(); } });
+    let pend = false;
+    act(st => { const e = F.validTrade(st, deal); if (e) return e; if (!localHuman) { const ev = F.tradeEval(st, deal); if (!ev.ok) return `${st.teams[deal.to].name} declined. They want more value (${ev.recv} offered vs ${ev.need} needed).`; }
+      if (needsApproval(st, deal)) { pend = true; st.offers.push(Object.assign({ id: S.rid(), status: 'pending', s: st.season, at: st.day, ai: true }, deal)); F.newsAdd(st, `The ${st.teams[deal.from].name} and ${st.teams[deal.to].name} agreed to a trade. It is waiting for commissioner approval.`, deal.from); return; }
+      return F.executeTrade(st, deal) || undefined; })
+      .then(e => { if (!e) { toast(pend ? `${esc(App.st.teams[deal.to].name)} agreed! The trade is waiting for the commissioner's approval.` : 'Trade accepted!', 'good'); App.trade.give = []; App.trade.get = []; render(); } });
   },
-  offerAccept: el => act(st => { const o = st.offers.find(x => x.id === el.dataset.id); if (!o || o.status !== 'open') return 'Offer no longer available.'; if (!canControl(o.to)) return 'Not your offer.'; const e = F.executeTrade(st, o); if (e) { o.status = 'void'; return e; } o.status = 'done'; }),
+  offerAccept: el => { let pend = false; act(st => { const o = st.offers.find(x => x.id === el.dataset.id); if (!o || o.status !== 'open') return 'Offer no longer available.'; if (!canControl(o.to)) return 'Not your offer.';
+    if (needsApproval(st, o)) { const e = F.validTrade(st, o); if (e) { o.status = 'void'; return e; } o.status = 'pending'; o.at = st.day; pend = true; F.newsAdd(st, `The ${st.teams[o.from].name} and ${st.teams[o.to].name} agreed to a trade. It is waiting for commissioner approval.`, o.to); return; }
+    const e = F.executeTrade(st, o); if (e) { o.status = 'void'; return e; } o.status = 'done'; }).then(e => { if (!e && pend) toast('Accepted! The trade now needs the commissioner\'s approval.', 'good'); }); },
+  tApprove: el => act(st => { if (st.commish !== S.uid) return 'Only the commissioner can approve trades.'; const o = st.offers.find(x => x.id === el.dataset.id); if (!o || o.status !== 'pending') return 'That trade is no longer pending.'; if (!F.tradesOpen(st)) { o.status = 'void'; return 'Trades are closed right now, so this deal was cancelled.'; } const e = F.executeTrade(st, o); if (e) { o.status = 'void'; F.newsAdd(st, `A pending trade between the ${st.teams[o.from].name} and ${st.teams[o.to].name} fell through: ${e}`, o.from); return e; } o.status = 'done'; F.newsAdd(st, `✅ The commissioner approved the trade between the ${st.teams[o.from].name} and ${st.teams[o.to].name}.`, o.from); }).then(e => { if (!e) toast('Trade approved.', 'good'); }),
+  tVeto: el => { const id = el.dataset.id; modal(`<h3>Veto this trade?</h3><p class="muted sm">Both managers will see the veto and your reason in the league news.</p><input id="vetoWhy" maxlength="140" placeholder="Reason (optional), e.g. too lopsided" style="width:100%"><div class="row" style="margin-top:10px"><button class="btn bad" data-act="tVetoGo" data-id="${esc(id)}">Veto trade</button><button class="btn ghost" data-act="closeModal">Cancel</button></div>`); },
+  tVetoGo: el => { const why = (($('#vetoWhy') || {}).value || '').trim().slice(0, 140); closeModal(); act(st => { if (st.commish !== S.uid) return 'Only the commissioner can veto trades.'; const o = st.offers.find(x => x.id === el.dataset.id); if (!o || o.status !== 'pending') return 'That trade is no longer pending.'; o.status = 'vetoed'; o.why = why; F.newsAdd(st, `❌ The commissioner vetoed the trade between the ${st.teams[o.from].name} and ${st.teams[o.to].name}${why ? ': "' + esc(why) + '"' : '.'}`, o.from); }).then(e => { if (!e) toast('Trade vetoed.'); }); },
+  tPendCancel: el => act(st => { const o = st.offers.find(x => x.id === el.dataset.id); if (!o || o.status !== 'pending') return 'That trade is no longer pending.'; if (!canControl(o.from) && !canControl(o.to)) return 'Not your trade.'; o.status = 'cancelled'; F.newsAdd(st, `A pending trade between the ${st.teams[o.from].name} and ${st.teams[o.to].name} was called off.`, o.from); }),
   offerDecline: el => act(st => { const o = st.offers.find(x => x.id === el.dataset.id); if (o) { o.status = 'declined'; F.newsAdd(st, `${st.teams[o.to].name} declined a trade offer from the ${st.teams[o.from].name}.`, o.from); } }),
   offerCancel: el => act(st => { const o = st.offers.find(x => x.id === el.dataset.id); if (o) o.status = 'cancelled'; }),
   faOffer: el => { const id = +el.dataset.id, my = myTid(); const sal = parseFloat($('#fs' + id).value), y = parseInt($('#fy' + id).value, 10); if (!(sal > 0) || !(y > 0)) return toast('Enter salary and years.', 'err'); act(st => F.faOffer(st, my, id, sal, y) || undefined).then(e => { if (!e) toast(App.st.phase === 'fa' ? 'Offer submitted.' : 'Signed!', 'good'); }); },
@@ -1373,6 +1413,7 @@ const C = {
   qual: el => { App.filt.qual = el.checked; render(); },
   fapos: el => { App.filt.fapos = el.value; render(); },
   dpos: el => { App.filt.dpos = el.value; render(); },
+  autoRest: el => { const on = el.checked; act(st => { st.teams[myTid()].autoRest = on; }); },
   autoMgr: el => { const on = el.checked; act(st => { const t = st.teams[myTid()]; t.auto = on; if (on) F.autoDepth(st, t); }); },
   luP: el => { const i = +el.dataset.i, id = +el.value; editLineup((st, t) => { const j = t.lu.findIndex(s => s.id === id); if (j >= 0 && j !== i) { const tmp = t.lu[j].id; t.lu[j].id = t.lu[i].id; t.lu[i].id = tmp; } else t.lu[i].id = id; }); },
   luPos: el => { const i = +el.dataset.i, pos = el.value; editLineup((st, t) => { const j = t.lu.findIndex(s => s.pos === pos); if (j >= 0 && j !== i) { t.lu[j].pos = t.lu[i].pos; } t.lu[i].pos = pos; }); },

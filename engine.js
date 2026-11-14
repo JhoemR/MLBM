@@ -493,6 +493,33 @@ function signPlayer(st, p, tid, sal, y) {
   p.tid = tid; p.sal = r1(sal); p.y = y; delete p.ask; p.lv = 0;
 }
 
+/* ---------- position-player fatigue ---------- */
+const HDRAIN = { C: 8.6, SS: 5.0, CF: 5.0, '2B': 4.8, '3B': 4.7, LF: 4.5, RF: 4.5, '1B': 4.3, DH: 3.0 };
+const REST_E = 66; // a regular below this sits (if auto-rest is on)
+function ageDrain(p) { return p.a >= 34 ? 1.15 : p.a >= 31 ? 1.05 : p.a <= 26 ? 0.9 : 1; }
+function wantsRest(p) { return !isP(p) && p.e < REST_E; }
+function applyRest(st, t, order, playoff) {
+  const autoRest = t.user == null || t.auto || t.autoRest !== false;
+  const rested = [];
+  if (!autoRest || playoff) return rested;
+  const inLu = new Set(order.map(s => s.id));
+  const bench = active(st, t.id).filter(p => !isP(p) && p.inj === 0 && !inLu.has(p.id));
+  order.forEach(s => {
+    const p = st.players[s.id]; if (!p || !wantsRest(p)) return;
+    let best = null, bv = -1e9;
+    for (const b of bench) {
+      if (inLu.has(b.id) || b.e < REST_E + 6) continue;
+      const v = ovrAt(b, s.pos) + famAt(b, s.pos) * (s.pos === 'C' ? 0.6 : 0.2);
+      if (v > bv) { bv = v; best = b; }
+    }
+    if (!best) return;
+    if (s.pos !== 'C' && s.pos !== 'DH' && ovrAt(best, s.pos) < ovrAt(p, s.pos) - 30 && p.e >= REST_E - 12) return; // no sensible fill-in: play through it
+    inLu.delete(p.id); inLu.add(best.id); rested.push([p.id, best.id]);
+    s.id = best.id;
+  });
+  return rested;
+}
+
 /* ---------- the game engine ---------- */
 function chooseStarter(st, t) {
   const rot = (t.rot || []).filter(id => { const p = st.players[id]; return p && p.tid === t.id && p.lv === 0 && p.inj === 0; });
@@ -503,11 +530,13 @@ function chooseStarter(st, t) {
   const ps = active(st, t.id).filter(p => isP(p) && p.inj === 0).sort((a, b) => b.e - a.e || b.r.sta - a.r.sta);
   return ps[0] ? ps[0].id : null;
 }
-function prepSide(st, tid) {
-  const t = st.teams[tid];
+function prepSide(st, tid, opts) {
+  const t = st.teams[tid]; opts = opts || {};
   let lu = (t.user != null && !t.auto) ? repairLineup(st, t) : (validLineup(st, t, t.lu) ? t.lu : autoLineup(st, t));
   if (!validLineup(st, t, lu)) lu = autoLineup(st, t);
   const order = lu.map(s => ({ id: s.id, pos: s.pos }));
+  const rested = opts.asg ? [] : applyRest(st, t, order, opts.playoff);
+  const start = order.map(s => [s.id, s.pos]);
   const sp = chooseStarter(st, t);
   const inLu = new Set(order.map(s => s.id));
   const act = active(st, tid).filter(p => p.inj === 0);
@@ -517,14 +546,14 @@ function prepSide(st, tid) {
   if (penP.length < 4) penP = penP.concat(act.filter(p => isP(p) && p.id !== sp && rotSet.has(p.id)).sort((a, b) => b.e - a.e).slice(0, 4 - penP.length));
   const pen = penP.map(p => p.id);
   const mods = H.mods ? H.mods(st, t) : {}; const roles = H.roles ? H.roles(st, t, pen) : {};
-  return { tid, order, bi: 0, sp, pit: sp, pc: {}, ent: {}, outsBy: {}, ra: {}, used: [sp], gone: [], bench, pen, cl: t.cl, su: t.su, bat: {}, pitl: {}, runs: 0, hits: 0, ls: [], startE: {}, sb: {}, mods, roles, specUsed: {} };
+  return { tid, order, bi: 0, sp, pit: sp, pc: {}, ent: {}, outsBy: {}, ra: {}, used: [sp], gone: [], bench, pen, cl: t.cl, su: t.su, bat: {}, pitl: {}, runs: 0, hits: 0, ls: [], startE: {}, sb: {}, mods, roles, specUsed: {}, start, rested };
 }
 
 class Game {
   constructor(st, hid, aid, opts) {
     opts = opts || {};
     this.st = st; this.opts = opts;
-    this.s = [prepSide(st, aid), prepSide(st, hid)]; // 0 away, 1 home
+    this.s = [prepSide(st, aid, opts), prepSide(st, hid, opts)]; // 0 away, 1 home
     this.inn = 1; this.half = 0; this.outs = 0; this.bases = [null, null, null];
     this.over = false; this.log = []; this.logOn = !!opts.log; this.playoff = !!opts.playoff;
     this.ctrl = opts.ctrl || [false, false]; // user-controlled sides
@@ -727,7 +756,8 @@ class Game {
     const r = bat.r, q = pit.r;
     const rolePen = (100 - famAt(pit, def.pit === def.sp ? 'SP' : 'RP')) * 0.05;
     const S0 = q.vel * .45 + q.brk * .55 - fat - rolePen + (dm.stuff || 0), C0 = q.ctl - fat * .7 - rolePen * 0.6 + (dm.ctl || 0);
-    const con0 = r.con + plat + (om.con || 0), pow0 = r.pow + plat * .7 + (om.pow || 0), eye0 = r.eye + (om.eye || 0);
+    const bt = bat.e < 75 ? (75 - bat.e) * 0.15 : 0; // tired legs, slower bat
+    const con0 = r.con + plat + (om.con || 0) - bt, pow0 = r.pow + plat * .7 + (om.pow || 0) - bt, eye0 = r.eye + (om.eye || 0) - bt * 0.5;
     const dfld0 = def.order.reduce((s, x) => s + (x.pos === 'DH' ? 0 : defAt(this.P(x.id), x.pos)), 0) / 8 + (dm.dfld || 0);
     const cn = this.st.cen || { con: 68, pow: 68, eye: 68, spd: 68, fld: 68, ctl: 68, S: 68 };
     const Z = 0.8, zz = (v, c) => c + (v - c) * Z;
@@ -856,7 +886,7 @@ class Game {
     const T = this.st.teams, st = this.st;
     const sides = this.s.map(sd => ({
       tid: sd.tid, runs: sd.runs, hits: sd.hits, ls: sd.ls.slice(),
-      bat: Object.keys(sd.bat).map(id => [+id, sd.bat[id]]), order: sd.order.map(s => [s.id, s.pos]),
+      bat: Object.keys(sd.bat).map(id => [+id, sd.bat[id]]), order: sd.order.map(s => [s.id, s.pos]), start: sd.start, rested: sd.rested,
       pit: sd.used.map(id => [id, sd.pitl[id] || new Array(PL).fill(0), sd.pc[id] || 0]),
       sp: sd.sp, rotSp: sd.sp
     }));
@@ -884,6 +914,15 @@ function applyBox(st, box, ctx) {
       for (const [id, line] of sd.pit) { const p = pls[id]; if (!p) continue; const a = p.sp || (p.sp = new Array(PL).fill(0)); a[P.g]++; for (let k = 1; k < PL; k++) a[k] += line[k]; }
     }
     for (const [id, , pc] of sd.pit) { const p = pls[id]; if (p) p.e = Math.max(0, p.e - pc * (id === sd.sp ? 1.0 : 1.6) - 6); }
+    if (!box.asg) {
+      const startPos = {}; (sd.start || []).forEach(([id, pos]) => { startPos[id] = pos; });
+      const endPos = {}; (sd.order || []).forEach(([id, pos]) => { endPos[id] = pos; });
+      for (const [id] of sd.bat) {
+        const p = pls[id]; if (!p || isP(p)) continue;
+        const pos = startPos[id] || endPos[id] || 'DH', full = id in startPos;
+        p.e = Math.max(0, p.e - (HDRAIN[pos] || 5) * ageDrain(p) * (full ? 1 : 0.4)); p.pd = st.dn || 0;
+      }
+    }
     if (H.box) H.box(st, sd, box);
     // rotation advance
     const ri_ = (t.rot || []).indexOf(sd.sp); if (ri_ >= 0) t.rotI = (ri_ + 1) % Math.max(1, t.rot.length);
@@ -927,6 +966,7 @@ function endDay(st) {
   for (const p of Object.values(st.players)) {
     if (p.tid < 0) continue;
     if (isP(p)) p.e = Math.min(100, p.e + 21);
+    else if (p.e < 100) p.e = Math.min(100, p.e + 3 + (p.pd === (st.dn || 0) ? 0 : 10));
     if (p.inj > 0) { p.inj--; if (p.inj === 0 && st.teams[p.tid].user != null) newsAdd(st, `${pname(p)} has returned from injury.`, p.tid); }
   }
   if (st.phase === 'regular' && st.day % 20 === 19) {
@@ -940,6 +980,7 @@ function endDay(st) {
   // occasional AI-to-AI trades
   if (st.phase === 'regular' && tradesOpen(st) && rnd() < 0.06) aiAiTrade(st);
   if (H.day) H.day(st);
+  st.dn = (st.dn || 0) + 1;
 }
 function bump(p, d) {
   const keys = Object.keys(p.r);
@@ -1394,7 +1435,7 @@ G.FR = {
   isP, batVal, defAt, famAt, BASEFAM, editPlayer, fitOvr, ovrAt, calcOvr, setOvr, marketSal, pval, askFor,
   createLeague, genSchedule, teamPlayers, mlb, active, onIL, payroll, pname, sname, tname, dayLabel, newsAdd, txnAdd,
   draftDay, deadlineDay, tradesOpen, userTeams, isUserTeam,
-  autoLineup, orderLineup, bestPositions, autoDepth, validLineup, repairLineup, fixRoster, fixRotation, signPlayer,
+  autoLineup, orderLineup, REST_E, wantsRest, bestPositions, autoDepth, validLineup, repairLineup, fixRoster, fixRotation, signPlayer,
   Game, playGame, applyBox, simDay, simDays, endDay, prepSide,
   tradeEval, validTrade, executeTrade,
   startDraft, draftProspects, draftAuto, draftPick, endDraft, scoutPlayer,
