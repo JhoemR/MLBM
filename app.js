@@ -120,10 +120,18 @@ async function loadStart() {
   }
   render();
 }
+function contCard(kind, name, sub, act, id) {
+  return `<section class="card contcard"><div><div class="kick">Continue where you left off · ${kind}</div><h2>${esc(name)}</h2><div class="muted sm">${sub}</div></div><button class="btn primary big" data-act="${act}" data-id="${esc(id)}">▶ Continue</button></section>`;
+}
+function ago(t) { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? m + 'm ago' : m < 1440 ? Math.round(m / 60) + 'h ago' : Math.round(m / 1440) + 'd ago'; }
 function V_start() {
   const w = App.start.wizard;
   if (w) return V_wizard(w);
   const saves = App.start.saves, lgs = App.start.leagues;
+  const last = getLast();
+  let cont = '';
+  if (last && last.mode === 'local' && saves && saves.find(x => x.id === last.id)) { const sv = saves.find(x => x.id === last.id); cont = contCard('Single player', sv.name, `${esc(sv.team || '')} · ${sv.season} · ${esc(phaseName(sv.phase))}`, 'openSave', sv.id); }
+  else if (last && last.mode === 'shared' && lgs && lgs.find(x => x.id === last.id)) { const l = lgs.find(x => x.id === last.id); cont = contCard('Multiplayer league', l.name, `${l.season} · ${esc(phaseName(l.phase))} · ${Object.keys(l.teams || {}).length} managers`, 'openLeague', l.id); }
   const saveRows = saves == null ? '<p class="muted">Loading…</p>' : saves.length ? saves.map(s => `<div class="saverow"><div><b>${esc(s.name)}</b><div class="muted sm">${esc(s.team || '')} · ${s.season} · ${esc(phaseName(s.phase))}${s.rec ? ' · ' + esc(s.rec) : ''}</div></div><div class="row"><button class="btn" data-act="openSave" data-id="${esc(s.id)}">Continue</button><button class="btn ghost sm" data-act="delSave" data-id="${esc(s.id)}" title="Delete">✕</button></div></div>`).join('') : '<p class="muted">No saved franchises yet.</p>';
   let mp;
   if (!S.db) mp = SELF ? `<p class="bad">Couldn't connect to your Firebase project. Check the settings in <b>firebase-config.js</b> and that Anonymous sign-in and Firestore are turned on (see SETUP guide).</p>` : `<p class="muted">Multiplayer needs the published page opened while signed in to Claude, by someone the owner has invited as an Editor. Open this page from its claude.ai link to create or join shared leagues.</p>`;
@@ -131,13 +139,18 @@ function V_start() {
   else mp = (lgs.length ? lgs.sort((a, b) => b.updated - a.updated).map(l => {
     const mine = Object.values(l.teams || {}).includes(S.uid);
     const n = Object.keys(l.teams || {}).length;
-    return `<div class="saverow"><div><b>${esc(l.name)}</b><div class="muted sm">Commissioner: ${esc(l.owner === S.uid ? 'You' : (App.names[l.owner] || 'Manager'))} · ${l.season} ${esc(phaseName(l.phase))} · ${n} manager${n === 1 ? '' : 's'}${mine ? ' · <span class="good">your league</span>' : ''}</div></div><div class="row"><button class="btn" data-act="openLeague" data-id="${esc(l.id)}">${mine ? 'Enter' : 'View / Join'}</button></div></div>`;
+    const own = l.owner === S.uid;
+    const myT = Object.keys(l.teams || {}).find(k => l.teams[k] === S.uid);
+    const tab = myT != null && window.REAL_TEAMS && REAL_TEAMS[myT] ? REAL_TEAMS[myT][2] : '';
+    return `<div class="saverow${mine ? ' mine' : ''}"><div><b>${esc(l.name)}</b>${own ? ' <span class="tag">Commissioner</span>' : ''}<div class="muted sm">${own ? '' : 'Commissioner: ' + esc(App.names[l.owner] || 'Manager') + ' · '}${l.season} ${esc(phaseName(l.phase))} · ${n} manager${n === 1 ? '' : 's'}${mine ? ` · <span class="good">you manage${tab ? ' ' + esc(tab) : ' a team'}</span>` : ''}${l.updated ? ' · updated ' + esc(ago(l.updated)) : ''}</div></div>
+     <div class="row"><button class="btn${mine ? ' primary' : ''}" data-act="openLeague" data-id="${esc(l.id)}">${mine ? '▶ Continue' : 'View / Join'}</button>${own ? `<button class="btn ghost sm" data-act="mgrMenu" data-id="${esc(l.id)}" title="Managers">👥 Managers</button><button class="btn ghost sm bad" data-act="delLeagueMenu" data-id="${esc(l.id)}" data-n="${esc(l.name)}" title="Delete league">🗑 Delete</button>` : mine ? `<button class="btn ghost sm" data-act="leaveMenu" data-id="${esc(l.id)}" data-n="${esc(l.name)}">Leave</button>` : ''}</div></div>`;
   }).join('') : '<p class="muted">No shared leagues yet. Create one and invite your friends.</p>') +
-    (S.uid ? `<button class="btn primary" data-act="wizard" data-mode="shared">+ Create Multiplayer League</button>` : '<p class="muted sm">Sign in to create a league.</p>');
+    (S.uid ? `<div class="row" style="margin-top:12px"><button class="btn primary" data-act="wizard" data-mode="shared">+ Create Multiplayer League</button><button class="btn ghost" data-act="refreshStart">↻ Refresh</button></div>` : '<p class="muted sm">Sign in to create a league.</p>');
   return `<div class="start">
   <div class="hero"><div class="logo">FRONT OFFICE<small>BASEBALL FRANCHISE</small></div>
   <p>Run a big-league club for as many seasons as you like: set lineups, manage games pitch by pitch, make trades, bid in free agency, scout the draft, and chase a title. Play solo or in a shared league with friends.</p><button class="btn ghost sm" data-act="tutMenu">📘 Tutorial</button></div>
   ${window.tutStartCard ? tutStartCard() : ''}
+  ${cont}
   <div class="grid2">
     <section class="card"><h2>Single Player</h2>${saveRows}<div class="row" style="margin-top:12px"><button class="btn primary" data-act="wizard" data-mode="local">+ New Franchise</button><button class="btn ghost" data-act="importOpen">Import save</button></div>
     <p class="muted sm" style="margin-top:10px">${S.hasCloud() ? 'Saves are stored privately in your account.' : 'Saves are kept in this browser. Use Export in Settings to back up.'}</p></section>
@@ -211,13 +224,21 @@ function shellTop() {
   const sw = us.length > 1 ? `<select data-chg="switchTeam" class="sw">${us.map(x => `<option value="${x.id}"${x.id === my ? ' selected' : ''}>${x.ab} ${esc(x.name)}</option>`).join('')}</select>` : '';
   const date = st.phase === 'regular' ? `${F.dayLabel(st)} · Day ${st.day + 1}/${st.sched.length}` : phaseName(st.phase);
   return `<header class="top">
-  <div class="brand" data-act="home" title="Back to menu">FO<span>B</span></div>
+  <div class="brand" data-act="home" title="Back to main menu">FO<span>B</span></div>
+  <button class="btn ghost sm menub" data-act="home" title="Return to main menu">⌂<span> Main Menu</span></button>
   <div class="lg"><b>${esc(st.name)}</b><span class="muted">${st.season} · ${esc(date)}</span></div>
   ${t ? `<div class="myteam">${tb(t.id, true)}<div><b>${esc(t.name)}</b><span class="muted">${rec(t)}${st.phase === 'regular' ? ' · ' + gbText(t) : ''}</span></div>${sw}</div>` : `<div class="myteam muted">Spectating</div>`}
   <div class="adv">${App.live ? '' : advControls()}</div>
+  ${App.mode === 'shared' ? `<button class="btn ghost sm mgrb" data-act="mgrOpen" title="Managers">👥<span> ${members().length}</span></button>` : ''}
   <button class="btn ghost sm tutq" data-act="tutMenu" title="Tutorial / help">?</button>
   <div class="sv"><span id="savestate" class="muted sm">${App.mode === 'shared' ? 'Shared league' : ''}</span></div>
   </header>`;
+}
+function managersCard() {
+  const st = App.st, c = isCommish();
+  const rows = members().map(u => `<tr><td class="l"><b>${esc(uname(u))}</b>${u === st.commish ? ' <span class="tag">Commissioner</span>' : ''}${u === S.uid ? ' <span class="muted sm">(you)</span>' : ''}</td><td>${tb(st.members[u])}</td><td>${st.ready && st.ready[u] ? '<span class="good sm">Ready</span>' : '<span class="muted sm">—</span>'}</td><td class="r">${c && u !== S.uid ? `<button class="mini bad ghost" data-act="kick" data-id="${esc(u)}">Remove manager</button>` : ''}${u === S.uid && u !== st.commish ? `<button class="mini ghost" data-act="leave">Leave league</button>` : ''}</td></tr>`).join('');
+  return `<section class="card"><h3>Managers</h3>${c ? '<p class="muted sm">As commissioner you can remove a manager. Their team goes back to AI control and opens up for someone else to claim.</p>' : ''}<div class="scroll"><table class="t mgr-t"><tr><th class="l">Manager</th><th>Team</th><th>Status</th><th></th></tr>${rows}</table></div>
+   ${inviteBox()}<p class="muted sm">${SELF ? 'Invite friends by sending them this website\'s address. They choose a nickname, open Multiplayer and claim a team.' : 'Invite friends from claude.ai: Share → add each friend by email as <b>Editor</b> (no public link). They open it, choose Multiplayer, and claim a team.'}</p></section>`;
 }
 function gbText(t) {
   const div = App.st.teams.filter(x => x.lg === t.lg && x.div === t.div).sort((a, b) => F.pct(b) - F.pct(a));
@@ -823,8 +844,7 @@ function V_settings() {
   <section class="card"><h3>Tutorial</h3><p class="muted sm">A quick tour of the site and the basics of baseball.</p><button class="btn" data-act="tutMenu">📘 Open tutorial</button></section>
   ${App.mode === 'local' ? `<section class="card"><h3>Controlled teams (couch co-op)</h3><p class="muted sm">Every ★ team is human-controlled. Use the switcher at the top to manage each one.</p>
    <div class="chips">${st.teams.map(t => `<button class="chip${t.user ? ' on' : ''}" data-act="toggleUser" data-id="${t.id}" style="--c:${t.col}">${t.ab}</button>`).join('')}</div></section>` :
-      `<section class="card"><h3>Managers</h3><table class="t">${members().map(u => `<tr><td>${esc(uname(u))}</td><td>${tb(st.members[u])}</td><td>${c && u !== S.uid ? `<button class="mini ghost" data-act="kick" data-id="${esc(u)}">Remove</button>` : ''}${u === S.uid && u !== st.commish ? `<button class="mini ghost" data-act="leave">Leave league</button>` : ''}</td></tr>`).join('')}</table>
-   ${inviteBox()}<p class="muted sm">${SELF ? 'Invite friends by sending them this website\'s address. They choose a nickname, open Multiplayer and claim a team.' : 'Invite friends from claude.ai: Share → add each friend by email as <b>Editor</b> (no public link). They open it, choose Multiplayer, and claim a team.'}</p></section>`}
+      managersCard()}
   <section class="card"><h3>Backup</h3><p class="muted sm">Export copies the whole league as text you can paste into Import later (single player).</p><div class="row"><button class="btn" data-act="export">Copy export</button><button class="btn ghost" data-act="home">Back to main menu</button></div>
    ${App.mode === 'local' ? `<button class="btn bad ghost" data-act="delSave" data-id="${esc(App.id)}" style="margin-top:10px">Delete this franchise</button>` : (c ? `<button class="btn bad ghost" data-act="delLeague" style="margin-top:10px">Delete this league for everyone</button>` : '')}</section>
   <section class="card"><h3>How it works</h3><ul class="help"><li><b>Play Game</b> lets you manage any of your games at-bat by at-bat: pinch hit, steal, bunt, walk a batter, or go to the bullpen.</li><li>The <b>draft</b> happens mid-season; the <b>trade deadline</b> follows. After the postseason: awards → re-sign → 6 days of free agency → preseason.</li><li>Players develop toward their potential until their late 20s and decline in their 30s.</li><li>Budgets grow with winning. Free-agent offers can't exceed your budget.</li></ul></section>
@@ -1093,16 +1113,18 @@ async function doSim(k) {
 /* ---------------- league open/create ---------------- */
 async function openSave(id) {
   busy(true, 'Loading…');
-  try { App.st = await S.loadLocal(id); F.ensureExt(App.st); App.mode = 'local'; App.id = id; resetView(); }
+  try { App.st = await S.loadLocal(id); F.ensureExt(App.st); App.mode = 'local'; App.id = id; resetView(); setLast('local', id, App.st.name); }
   catch (e) { toast(esc(e.message), 'err'); }
   busy(false); render();
 }
+function setLast(mode, id, name) { try { localStorage.setItem('fob_last', JSON.stringify({ mode, id, name, t: Date.now() })); } catch (e) { } }
+function getLast() { try { return JSON.parse(localStorage.getItem('fob_last') || 'null'); } catch (e) { return null; } }
 async function openLeague(lid) {
   busy(true, 'Loading league…');
   try {
     const { st } = await S.fetchShared(lid);
     F.ensureExt(st);
-    App.st = st; App.mode = 'shared'; App.id = lid; resetView();
+    App.st = st; App.mode = 'shared'; App.id = lid; resetView(); setLast('shared', lid, st.name);
     try { if (location.hash !== '#join-' + lid) location.hash = 'join-' + lid; } catch (e) { }
     if (App.unsub) App.unsub();
     App.unsub = S.watch(lid, meta => onRemote(meta), () => { });
@@ -1120,8 +1142,9 @@ async function onRemote(meta) {
   try {
     const { st } = await S.fetchShared(App.id, meta);
     if (st.ver > App.st.ver) {
-      const oldDay = App.st.day + App.st.phase;
+      const oldDay = App.st.day + App.st.phase, wasIn = S.uid in (App.st.members || {});
       App.st = st;
+      if (wasIn && !(S.uid in (st.members || {}))) toast('You are no longer managing a team in this league. You can claim an open team from the League page.', 'err');
       if (!App.live) { if ($('#modal').style.display !== 'flex') render(); else { const top = document.querySelector('header.top'); if (top) top.outerHTML = shellTop(); } }
       F.ensureExt(st);
       if (oldDay !== st.day + st.phase) toast('The league advanced.', 'good');
@@ -1150,7 +1173,7 @@ async function createFromWizard() {
     }
     w.teams.forEach(tid => { st.teams[tid].user = 'local'; });
     if (st.phase === 'fantasy') F.fdAuto(st);
-    App.st = st; App.mode = 'local'; App.id = S.rid(); resetView(); App.start.wizard = null;
+    App.st = st; App.mode = 'local'; App.id = S.rid(); resetView(); App.start.wizard = null; setLast('local', App.id, st.name);
     await saveNow();
   } catch (e) { console.error(e); toast(esc(e.message || 'Could not create league.'), 'err'); }
   busy(false); render();
@@ -1160,7 +1183,23 @@ async function createFromWizard() {
 /* ---------------- event handlers ---------------- */
 const H = {
   nav: el => { App.view = el.dataset.v; closeModal(); render(); window.scrollTo(0, 0); },
-  home: () => goHome(),
+  home: () => { if (App.live && App.live.g && !App.live.g.over) return confirmBox('Leave this game and return to the main menu? The game will be simmed when the day advances.', () => { closeModal(); liveStop(); App.live = null; goHome(); }); closeModal(); goHome(); },
+  refreshStart: () => { App.start.leagues = null; render(); loadStart(); },
+  mgrOpen: () => modal(managersCard().replace('<section class="card">', '<div class="mgrmodal">').replace(/<\/section>$/, '</div>')),
+  delLeagueMenu: el => confirmBox(`Delete the league <b>${esc(el.dataset.n)}</b> for every manager? This cannot be undone.`, async () => { closeModal(); busy(true, 'Deleting…'); try { await S.deleteShared(el.dataset.id); toast('League deleted.'); } catch (e) { toast(esc(e.message), 'err'); } busy(false); loadStart(); }),
+  leaveMenu: el => confirmBox(`Leave <b>${esc(el.dataset.n)}</b>? Your team goes back to AI control.`, async () => { closeModal(); busy(true, 'Leaving…'); try { const r = await S.commitShared(el.dataset.id, null, st => { const tid = st.members[S.uid]; if (tid != null) { st.teams[tid].user = null; st.teams[tid].auto = true; } delete st.members[S.uid]; if (st.ready) delete st.ready[S.uid]; }); if (r.err) toast(esc(r.err), 'err'); else toast('You left the league.'); } catch (e) { toast(esc(e.message), 'err'); } busy(false); loadStart(); }),
+  mgrMenu: async el => {
+    const lid = el.dataset.id; busy(true, 'Loading managers…');
+    try {
+      const { st } = await S.fetchShared(lid); busy(false);
+      const ms = Object.keys(st.members || {});
+      Object.assign(App.names, await S.names(ms.filter(u => !(u in App.names))));
+      const nm = u => (st.nick && st.nick[u]) || App.names[u] || 'Manager';
+      const rows = ms.map(u => { const t = st.teams[st.members[u]]; return `<tr><td class="l"><b>${esc(nm(u))}</b>${u === st.commish ? ' <span class="tag">Commissioner</span>' : ''}</td><td><span class="tb" style="--c:${t.col}">${t.ab}</span></td><td class="r">${u !== S.uid ? `<button class="mini bad ghost" data-act="kickMenu" data-lid="${esc(lid)}" data-id="${esc(u)}" data-n="${esc(nm(u))}">Remove manager</button>` : ''}</td></tr>`; }).join('');
+      modal(`<h2>Managers · ${esc(st.name)}</h2><p class="muted sm">Removing a manager hands their team back to the AI and opens it up for someone else to claim.</p><table class="t mgr-t">${rows || '<tr><td class="muted">No managers yet.</td></tr>'}</table>`);
+    } catch (e) { busy(false); toast(esc(e.message), 'err'); }
+  },
+  kickMenu: el => { const lid = el.dataset.lid, u = el.dataset.id; confirmBox(`Remove <b>${esc(el.dataset.n)}</b> from the league? Their team goes back to AI control.`, async () => { closeModal(); busy(true, 'Removing…'); try { const r = await S.commitShared(lid, null, st => { const tid = st.members[u]; if (tid != null) { st.teams[tid].user = null; st.teams[tid].auto = true; } delete st.members[u]; if (st.ready) delete st.ready[u]; }); if (r.err) toast(esc(r.err), 'err'); else toast('Manager removed.', 'good'); } catch (e) { toast(esc(e.message), 'err'); } busy(false); loadStart(); }); },
   lvMore: () => { App.lvMore = !App.lvMore; render(); },
   tab: el => { App.tab[el.dataset.g] = el.dataset.v; render(); },
   sort: el => { const g = el.dataset.g; if (App.sort[g] === el.dataset.k) App.sort[g + 'rev'] = !App.sort[g + 'rev']; else { App.sort[g] = el.dataset.k; App.sort[g + 'rev'] = false; } render(); },
